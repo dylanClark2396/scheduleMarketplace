@@ -1,0 +1,277 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Lambda functions (API + import processor) and API Gateway HTTP API
+  for the NCAA Schedule Marketplace backend.
+  Replaces the EC2 compute stack.
+
+Parameters:
+  Environment:
+    Type: String
+    Default: prod
+    AllowedValues: [prod, staging]
+
+  # Resolved from SSM at CFN deploy time (written by 02-storage + 03-cognito stacks)
+  DeployBucket:
+    Type: AWS::SSM::Parameter::Value<String>
+    Default: /ncaa-marketplace/prod/deploy-bucket
+
+  TeamsTable:
+    Type: AWS::SSM::Parameter::Value<String>
+    Default: /ncaa-marketplace/prod/teams-table
+
+  SchedulesTable:
+    Type: AWS::SSM::Parameter::Value<String>
+    Default: /ncaa-marketplace/prod/schedules-table
+
+  MarketplaceTable:
+    Type: AWS::SSM::Parameter::Value<String>
+    Default: /ncaa-marketplace/prod/marketplace-table
+
+  ImportJobsTable:
+    Type: AWS::SSM::Parameter::Value<String>
+    Default: /ncaa-marketplace/prod/import-jobs-table
+
+  ImportBucket:
+    Type: AWS::SSM::Parameter::Value<String>
+    Default: /ncaa-marketplace/prod/import-bucket
+
+  ScraperBucket:
+    Type: AWS::SSM::Parameter::Value<String>
+    Default: /ncaa-marketplace/prod/scraper-bucket
+
+  CognitoUserPoolId:
+    Type: AWS::SSM::Parameter::Value<String>
+    Default: /ncaa-marketplace/prod/cognito-user-pool-id
+
+  CognitoClientId:
+    Type: AWS::SSM::Parameter::Value<String>
+    Default: /ncaa-marketplace/prod/cognito-client-id
+
+Resources:
+
+  # ---------------------------------------------------------------------------
+  # IAM Role — shared execution role for both Lambda functions
+  # ---------------------------------------------------------------------------
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ncaa-marketplace-lambda-${Environment}
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: ncaa-marketplace-lambda
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+
+              # DynamoDB — project tables only
+              - Sid: DynamoDB
+                Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:Query
+                  - dynamodb:Scan
+                  - dynamodb:BatchGetItem
+                  - dynamodb:BatchWriteItem
+                Resource:
+                  - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/ncaa_*
+                  - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/ncaa_*/index/*
+
+              # S3 — import and scraper buckets
+              - Sid: S3
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                  - s3:ListBucket
+                Resource:
+                  - !Sub arn:aws:s3:::${ImportBucket}
+                  - !Sub arn:aws:s3:::${ImportBucket}/*
+                  - !Sub arn:aws:s3:::${ScraperBucket}
+                  - !Sub arn:aws:s3:::${ScraperBucket}/*
+
+              # Textract — OCR for import processor
+              - Sid: Textract
+                Effect: Allow
+                Action:
+                  - textract:AnalyzeDocument
+                  - textract:DetectDocumentText
+                Resource: '*'
+
+              # Lambda — API function invokes import processor asynchronously
+              - Sid: InvokeLambda
+                Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource:
+                  - !GetAtt ImportProcessorFunction.Arn
+
+  # ---------------------------------------------------------------------------
+  # API Lambda — wraps Express app via serverless-express
+  # ---------------------------------------------------------------------------
+  ApiFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub ncaa-marketplace-api-${Environment}
+      Description: NCAA Schedule Marketplace REST API
+      Runtime: nodejs20.x
+      Handler: lambda.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 30
+      MemorySize: 512
+      # Initial placeholder code — replaced by deploy-backend.yml on first push
+      Code:
+        ZipFile: |
+          exports.handler = async () => ({
+            statusCode: 200,
+            body: JSON.stringify({ status: 'ok', message: 'awaiting first deploy' })
+          })
+      Environment:
+        Variables:
+          NODE_ENV: production
+          AWS_NODEJS_CONNECTION_REUSE_ENABLED: '1'
+          COGNITO_USER_POOL_ID: !Ref CognitoUserPoolId
+          COGNITO_CLIENT_ID: !Ref CognitoClientId
+          S3_IMPORT_BUCKET: !Ref ImportBucket
+          S3_SCRAPER_BUCKET: !Ref ScraperBucket
+          TEAMS_TABLE: !Ref TeamsTable
+          SCHEDULES_TABLE: !Ref SchedulesTable
+          MARKETPLACE_TABLE: !Ref MarketplaceTable
+          IMPORT_JOBS_TABLE: !Ref ImportJobsTable
+          IMPORT_PROCESSOR_FUNCTION_NAME: !Ref ImportProcessorFunction
+      Tags:
+        - Key: Project
+          Value: ncaa-marketplace
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ---------------------------------------------------------------------------
+  # Import Processor Lambda — handles async OCR and CSV parsing
+  # ---------------------------------------------------------------------------
+  ImportProcessorFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub ncaa-marketplace-import-processor-${Environment}
+      Description: Async schedule import processor (Textract / CSV)
+      Runtime: nodejs20.x
+      Handler: importProcessor.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 300   # 5 minutes — Textract on large PDFs can be slow
+      MemorySize: 256
+      Code:
+        ZipFile: |
+          exports.handler = async (event) => {
+            console.log('Import processor placeholder — awaiting first deploy', event)
+          }
+      Environment:
+        Variables:
+          NODE_ENV: production
+          AWS_NODEJS_CONNECTION_REUSE_ENABLED: '1'
+          S3_IMPORT_BUCKET: !Ref ImportBucket
+          IMPORT_JOBS_TABLE: !Ref ImportJobsTable
+      Tags:
+        - Key: Project
+          Value: ncaa-marketplace
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ---------------------------------------------------------------------------
+  # API Gateway HTTP API — cheaper and simpler than REST API
+  # ---------------------------------------------------------------------------
+  HttpApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: !Sub ncaa-marketplace-${Environment}
+      Description: NCAA Schedule Marketplace API
+      ProtocolType: HTTP
+      CorsConfiguration:
+        AllowOrigins:
+          - https://schedulemarketplace.com
+          - http://localhost:5173
+        AllowMethods:
+          - GET
+          - POST
+          - PATCH
+          - DELETE
+          - OPTIONS
+        AllowHeaders:
+          - Content-Type
+          - Authorization
+        MaxAge: 300
+      Tags:
+        Project: ncaa-marketplace
+        Environment: !Ref Environment
+
+  ApiIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref HttpApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt ApiFunction.Arn
+      PayloadFormatVersion: '2.0'   # required for serverless-express v4
+
+  ApiRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: $default        # catches all methods and paths
+      Target: !Sub integrations/${ApiIntegration}
+
+  ApiStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref HttpApi
+      StageName: $default
+      AutoDeploy: true
+
+  ApiLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt ApiFunction.Arn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*
+
+  # ---------------------------------------------------------------------------
+  # SSM Parameters — consumed by deploy workflow and frontend build
+  # ---------------------------------------------------------------------------
+  ParamApiUrl:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /ncaa-marketplace/${Environment}/api-url
+      Type: String
+      Value: !Sub https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com
+
+  ParamApiFunctionName:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /ncaa-marketplace/${Environment}/api-function-name
+      Type: String
+      Value: !Ref ApiFunction
+
+  ParamImportProcessorFunctionName:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /ncaa-marketplace/${Environment}/import-processor-function-name
+      Type: String
+      Value: !Ref ImportProcessorFunction
+
+Outputs:
+  ApiUrl:
+    Value: !Sub https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com
+    Description: Set this as VITE_API_BASE in GitHub secrets
+  ApiFunctionName:
+    Value: !Ref ApiFunction
+  ImportProcessorFunctionName:
+    Value: !Ref ImportProcessorFunction

@@ -1,0 +1,117 @@
+name: Deploy Frontend
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/deploy-frontend.yml'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment
+        required: true
+        default: prod
+        type: choice
+        options: [prod, staging]
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    name: Build & deploy frontend
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment || 'prod' }}
+
+    env:
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+      ENV: ${{ inputs.environment || 'prod' }}
+      # These are injected into the Vite build
+      VITE_API_BASE: ${{ secrets.VITE_API_BASE }}
+      VITE_COGNITO_DOMAIN: ${{ secrets.VITE_COGNITO_DOMAIN }}
+      VITE_COGNITO_CLIENT_ID: ${{ secrets.VITE_COGNITO_CLIENT_ID }}
+      VITE_REDIRECT_URI: ${{ secrets.VITE_REDIRECT_URI }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Type-check
+        working-directory: frontend
+        run: pnpm type-check
+
+      - name: Build
+        working-directory: frontend
+        run: pnpm build-only
+        # dist/ is ready — env vars are baked in at build time
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Resolve resources from SSM
+        id: ssm
+        run: |
+          FRONTEND_BUCKET=$(aws ssm get-parameter \
+            --name /ncaa-marketplace/$ENV/frontend-bucket \
+            --query Parameter.Value --output text)
+          CF_DIST_ID=$(aws ssm get-parameter \
+            --name /ncaa-marketplace/$ENV/cloudfront-distribution-id \
+            --query Parameter.Value --output text)
+          echo "frontend_bucket=$FRONTEND_BUCKET" >> $GITHUB_OUTPUT
+          echo "cf_dist_id=$CF_DIST_ID" >> $GITHUB_OUTPUT
+
+      - name: Sync to S3
+        working-directory: frontend
+        run: |
+          # Upload assets with long cache (hashed filenames)
+          aws s3 sync dist/ s3://${{ steps.ssm.outputs.frontend_bucket }}/ \
+            --delete \
+            --cache-control "public,max-age=31536000,immutable" \
+            --exclude "*.html" \
+            --exclude "service-worker.js"
+
+          # Upload HTML with no-cache (must always be fresh for SPA routing)
+          aws s3 sync dist/ s3://${{ steps.ssm.outputs.frontend_bucket }}/ \
+            --exclude "*" \
+            --include "*.html" \
+            --include "service-worker.js" \
+            --cache-control "no-cache,no-store,must-revalidate"
+
+      - name: Invalidate CloudFront cache
+        run: |
+          INVALIDATION_ID=$(aws cloudfront create-invalidation \
+            --distribution-id ${{ steps.ssm.outputs.cf_dist_id }} \
+            --paths "/*" \
+            --query Invalidation.Id --output text)
+          echo "Invalidation: $INVALIDATION_ID"
+
+          # Wait for invalidation to complete (optional — ~1-2 min)
+          aws cloudfront wait invalidation-completed \
+            --distribution-id ${{ steps.ssm.outputs.cf_dist_id }} \
+            --id "$INVALIDATION_ID"
+          echo "Cache invalidated."
+
+      - name: Print frontend URL
+        run: |
+          CF_DOMAIN=$(aws ssm get-parameter \
+            --name /ncaa-marketplace/$ENV/cloudfront-domain \
+            --query Parameter.Value --output text)
+          echo "Frontend deployed: https://$CF_DOMAIN"

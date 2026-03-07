@@ -1,0 +1,33 @@
+{
+  "name": "schedule-marketplace-backend",
+  "version": "1.0.0",
+  "description": "NCAA Basketball Schedule Marketplace API",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "dev": "nodemon index.js",
+    "start": "node index.js",
+    "build": "esbuild lambda.js importProcessor.js --bundle --platform=node --format=cjs --outdir=dist"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "packageManager": "pnpm@10.30.0",
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.998.0",
+    "@aws-sdk/client-lambda": "^3.998.0",
+    "@aws-sdk/client-s3": "^3.998.0",
+    "@aws-sdk/client-textract": "^3.998.0",
+    "@aws-sdk/lib-dynamodb": "^3.998.0",
+    "@aws-sdk/s3-request-presigner": "^3.998.0",
+    "@vendia/serverless-express": "^4.12.6",
+    "aws-jwt-verify": "^5.1.1",
+    "cors": "^2.8.6",
+    "dotenv": "^17.3.1",
+    "express": "^5.2.1"
+  },
+  "devDependencies": {
+    "esbuild": "^0.27.3",
+    "nodemon": "^3.1.11"
+  }
+}

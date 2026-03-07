@@ -1,0 +1,238 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  GitHub Actions OIDC provider and deploy role.
+  Deploy this stack ONCE manually with admin credentials before using any workflows.
+
+Parameters:
+  GitHubOrg:
+    Type: String
+    Description: GitHub org or username (e.g. "myorg")
+  GitHubRepo:
+    Type: String
+    Description: GitHub repository name (e.g. "scheduleMarketplace")
+  Environment:
+    Type: String
+    Default: prod
+    AllowedValues: [prod, staging]
+
+Resources:
+
+  # ---------------------------------------------------------------------------
+  # OIDC Provider — allows GitHub Actions to assume IAM roles without long-lived keys
+  # ---------------------------------------------------------------------------
+  GitHubOIDCProvider:
+    Type: AWS::IAM::OIDCProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList:
+        - sts.amazonaws.com
+      ThumbprintList:
+        - 6938fd4d98bab03faadb97b34396831e3780aea1
+        - 1c58a3a8518e8759bf075b76b750d4f2df264fcd
+
+  # ---------------------------------------------------------------------------
+  # IAM Role assumed by GitHub Actions workflows
+  # ---------------------------------------------------------------------------
+  GitHubActionsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ncaa-marketplace-github-${Environment}
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !GetAtt GitHubOIDCProvider.Arn
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+              StringLike:
+                # Allow any branch/ref in this repo — tighten to "ref:refs/heads/main:*" for production
+                token.actions.githubusercontent.com:sub: !Sub repo:${GitHubOrg}/${GitHubRepo}:*
+      ManagedPolicyArns:
+        - !Ref DeployPolicy
+
+  DeployPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Sub ncaa-marketplace-deploy-${Environment}
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+
+          # CloudFormation — deploy/update all stacks
+          - Sid: CloudFormation
+            Effect: Allow
+            Action:
+              - cloudformation:CreateStack
+              - cloudformation:UpdateStack
+              - cloudformation:DeleteStack
+              - cloudformation:DescribeStacks
+              - cloudformation:DescribeStackEvents
+              - cloudformation:DescribeStackResource
+              - cloudformation:DescribeStackResources
+              - cloudformation:GetTemplate
+              - cloudformation:ValidateTemplate
+              - cloudformation:ListStacks
+            Resource: '*'
+
+          # S3 — artifact upload, frontend deploy, bucket config
+          - Sid: S3Deploy
+            Effect: Allow
+            Action:
+              - s3:PutObject
+              - s3:GetObject
+              - s3:DeleteObject
+              - s3:ListBucket
+              - s3:GetBucketLocation
+              - s3:GetBucketPolicy
+              - s3:PutBucketPolicy
+              - s3:CreateBucket
+              - s3:PutBucketWebsite
+              - s3:PutBucketPublicAccessBlock
+            Resource: '*'
+
+          # SSM Parameter Store — read deploy config, send commands to EC2
+          - Sid: SSM
+            Effect: Allow
+            Action:
+              - ssm:GetParameter
+              - ssm:GetParameters
+              - ssm:GetParametersByPath
+              - ssm:PutParameter
+              - ssm:SendCommand
+              - ssm:GetCommandInvocation
+              - ssm:ListCommandInvocations
+              - ssm:DescribeInstanceInformation
+            Resource: '*'
+
+          # EC2 — create/manage compute stack resources
+          - Sid: EC2
+            Effect: Allow
+            Action:
+              - ec2:RunInstances
+              - ec2:TerminateInstances
+              - ec2:DescribeInstances
+              - ec2:DescribeInstanceStatus
+              - ec2:DescribeImages
+              - ec2:DescribeKeyPairs
+              - ec2:DescribeSecurityGroups
+              - ec2:DescribeSubnets
+              - ec2:DescribeVpcs
+              - ec2:CreateSecurityGroup
+              - ec2:DeleteSecurityGroup
+              - ec2:AuthorizeSecurityGroupIngress
+              - ec2:AuthorizeSecurityGroupEgress
+              - ec2:RevokeSecurityGroupIngress
+              - ec2:RevokeSecurityGroupEgress
+              - ec2:AllocateAddress
+              - ec2:AssociateAddress
+              - ec2:ReleaseAddress
+              - ec2:DescribeAddresses
+              - ec2:CreateTags
+              - ec2:ModifyInstanceAttribute
+            Resource: '*'
+
+          # IAM — create roles/profiles for EC2 and other services
+          - Sid: IAM
+            Effect: Allow
+            Action:
+              - iam:CreateRole
+              - iam:DeleteRole
+              - iam:GetRole
+              - iam:TagRole
+              - iam:PassRole
+              - iam:AttachRolePolicy
+              - iam:DetachRolePolicy
+              - iam:PutRolePolicy
+              - iam:GetRolePolicy
+              - iam:DeleteRolePolicy
+              - iam:CreateInstanceProfile
+              - iam:DeleteInstanceProfile
+              - iam:GetInstanceProfile
+              - iam:AddRoleToInstanceProfile
+              - iam:RemoveRoleFromInstanceProfile
+              - iam:CreatePolicy
+              - iam:DeletePolicy
+              - iam:GetPolicy
+              - iam:GetPolicyVersion
+              - iam:CreatePolicyVersion
+              - iam:ListPolicyVersions
+              - iam:DeletePolicyVersion
+              - iam:CreateOIDCProvider
+              - iam:GetOIDCProvider
+              - iam:DeleteOIDCProvider
+            Resource: '*'
+
+          # DynamoDB — create tables in storage stack
+          - Sid: DynamoDB
+            Effect: Allow
+            Action:
+              - dynamodb:CreateTable
+              - dynamodb:DeleteTable
+              - dynamodb:DescribeTable
+              - dynamodb:UpdateTable
+              - dynamodb:ListTables
+              - dynamodb:TagResource
+            Resource: '*'
+
+          # Cognito — create user pool in cognito stack
+          - Sid: Cognito
+            Effect: Allow
+            Action:
+              - cognito-idp:CreateUserPool
+              - cognito-idp:DeleteUserPool
+              - cognito-idp:DescribeUserPool
+              - cognito-idp:UpdateUserPool
+              - cognito-idp:CreateUserPoolClient
+              - cognito-idp:DeleteUserPoolClient
+              - cognito-idp:DescribeUserPoolClient
+              - cognito-idp:UpdateUserPoolClient
+              - cognito-idp:CreateUserPoolDomain
+              - cognito-idp:DeleteUserPoolDomain
+              - cognito-idp:DescribeUserPoolDomain
+            Resource: '*'
+
+          # CloudFront — create/invalidate distribution
+          - Sid: CloudFront
+            Effect: Allow
+            Action:
+              - cloudfront:CreateDistribution
+              - cloudfront:DeleteDistribution
+              - cloudfront:GetDistribution
+              - cloudfront:UpdateDistribution
+              - cloudfront:CreateInvalidation
+              - cloudfront:GetInvalidation
+              - cloudfront:ListDistributions
+              - cloudfront:CreateOriginAccessControl
+              - cloudfront:DeleteOriginAccessControl
+              - cloudfront:GetOriginAccessControl
+              - cloudfront:TagResource
+            Resource: '*'
+
+          # ACM — request/manage certificates
+          - Sid: ACM
+            Effect: Allow
+            Action:
+              - acm:RequestCertificate
+              - acm:DeleteCertificate
+              - acm:DescribeCertificate
+              - acm:ListCertificates
+              - acm:AddTagsToCertificate
+            Resource: '*'
+
+  # Store role ARN in SSM so workflows can read it
+  RoleArnParam:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /ncaa-marketplace/${Environment}/github-actions-role-arn
+      Type: String
+      Value: !GetAtt GitHubActionsRole.Arn
+
+Outputs:
+  GitHubActionsRoleArn:
+    Description: Paste this into GitHub secret AWS_DEPLOY_ROLE
+    Value: !GetAtt GitHubActionsRole.Arn
+    Export:
+      Name: !Sub ncaa-marketplace-github-role-${Environment}

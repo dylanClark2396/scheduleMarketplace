@@ -1,0 +1,114 @@
+name: Run NCAA Scraper
+
+on:
+  # Run every Monday at 06:00 UTC (start of week, fresh data)
+  schedule:
+    - cron: '0 6 * * 1'
+
+  # Allow manual trigger with target selection
+  workflow_dispatch:
+    inputs:
+      target:
+        description: What to scrape
+        required: true
+        default: all
+        type: choice
+        options: [teams, rankings, stats, all]
+      environment:
+        description: Target environment
+        required: true
+        default: prod
+        type: choice
+        options: [prod, staging]
+      upload_s3:
+        description: Upload output to S3
+        required: true
+        default: 'true'
+        type: boolean
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  scrape:
+    name: Scrape NCAA data
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment || 'prod' }}
+
+    env:
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+      ENV: ${{ inputs.environment || 'prod' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: scraper/requirements.txt
+
+      - name: Install Python dependencies
+        working-directory: scraper
+        run: pip install -r requirements.txt
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Resolve scraper bucket from SSM
+        id: ssm
+        run: |
+          SCRAPER_BUCKET=$(aws ssm get-parameter \
+            --name /ncaa-marketplace/$ENV/scraper-bucket \
+            --query Parameter.Value --output text)
+          echo "scraper_bucket=$SCRAPER_BUCKET" >> $GITHUB_OUTPUT
+
+      - name: Run scraper
+        working-directory: scraper
+        env:
+          S3_SCRAPER_BUCKET: ${{ steps.ssm.outputs.scraper_bucket }}
+        run: |
+          TARGET="${{ inputs.target || 'all' }}"
+          UPLOAD_FLAG=""
+          if [ "${{ inputs.upload_s3 || 'true' }}" = "true" ]; then
+            UPLOAD_FLAG="--upload-s3"
+          fi
+
+          echo "Running scraper: target=$TARGET upload=$UPLOAD_FLAG"
+          python ncaa_scraper.py --target "$TARGET" $UPLOAD_FLAG
+
+      - name: Show output summary
+        working-directory: scraper
+        run: |
+          echo "=== Scraper output files ==="
+          ls -lh output/ 2>/dev/null || echo "(no output files)"
+          for f in output/*.json; do
+            [ -f "$f" ] || continue
+            COUNT=$(python -c "import json; d=json.load(open('$f')); print(len(d) if isinstance(d, list) else 1)")
+            echo "  $f — $COUNT records"
+          done
+
+      - name: Trigger backend data sync
+        if: inputs.upload_s3 != 'false'
+        run: |
+          API_IP=$(aws ssm get-parameter \
+            --name /ncaa-marketplace/$ENV/api-ip \
+            --query Parameter.Value --output text)
+          INSTANCE_ID=$(aws ssm get-parameter \
+            --name /ncaa-marketplace/$ENV/api-instance-id \
+            --query Parameter.Value --output text)
+
+          # Call /admin/sync on the running backend via SSM (no public HTTP needed)
+          aws ssm send-command \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name "AWS-RunShellScript" \
+            --parameters "commands=[\"curl -s -X POST http://localhost:3000/admin/sync -H 'Content-Type: application/json' -d '{\\\"source\\\":\\\"teams\\\"}'\"]" \
+            --comment "Post-scrape sync" \
+            --output text > /dev/null
+
+          echo "Sync command sent to backend."

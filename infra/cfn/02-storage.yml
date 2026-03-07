@@ -1,0 +1,291 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  DynamoDB tables, S3 buckets (imports, scraper output, deploy artifacts, frontend),
+  and SSM parameters for the NCAA Schedule Marketplace.
+
+Parameters:
+  Environment:
+    Type: String
+    Default: prod
+    AllowedValues: [prod, staging]
+
+Resources:
+
+  # ---------------------------------------------------------------------------
+  # DynamoDB — Teams
+  # ---------------------------------------------------------------------------
+  TeamsTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: !Sub ncaa_teams_${Environment}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      Tags:
+        - Key: Project
+          Value: ncaa-marketplace
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ---------------------------------------------------------------------------
+  # DynamoDB — Schedules
+  # ---------------------------------------------------------------------------
+  SchedulesTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: !Sub ncaa_schedules_${Environment}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: teamId
+          AttributeType: S
+        - AttributeName: season
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: teamId-season-index
+          KeySchema:
+            - AttributeName: teamId
+              KeyType: HASH
+            - AttributeName: season
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      Tags:
+        - Key: Project
+          Value: ncaa-marketplace
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ---------------------------------------------------------------------------
+  # DynamoDB — Marketplace Listings
+  # ---------------------------------------------------------------------------
+  MarketplaceTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: !Sub ncaa_marketplace_${Environment}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: status
+          AttributeType: S
+        - AttributeName: createdAt
+          AttributeType: N
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: status-createdAt-index
+          KeySchema:
+            - AttributeName: status
+              KeyType: HASH
+            - AttributeName: createdAt
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      Tags:
+        - Key: Project
+          Value: ncaa-marketplace
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ---------------------------------------------------------------------------
+  # DynamoDB — Import Jobs
+  # ---------------------------------------------------------------------------
+  ImportJobsTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: !Sub ncaa_import_jobs_${Environment}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      Tags:
+        - Key: Project
+          Value: ncaa-marketplace
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ---------------------------------------------------------------------------
+  # S3 — Deploy artifacts (backend bundles)
+  # ---------------------------------------------------------------------------
+  DeployBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub ncaa-marketplace-deploy-${Environment}-${AWS::AccountId}
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+          - Id: expire-old-versions
+            Status: Enabled
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 30
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags:
+        - Key: Project
+          Value: ncaa-marketplace
+
+  # ---------------------------------------------------------------------------
+  # S3 — Schedule file imports (PDFs, photos, CSVs)
+  # ---------------------------------------------------------------------------
+  ImportBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub ncaa-marketplace-imports-${Environment}-${AWS::AccountId}
+      LifecycleConfiguration:
+        Rules:
+          - Id: expire-imports
+            Status: Enabled
+            ExpirationInDays: 30
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders: ['*']
+            AllowedMethods: [GET, PUT, POST]
+            AllowedOrigins: ['*']
+            MaxAge: 3000
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags:
+        - Key: Project
+          Value: ncaa-marketplace
+
+  # ---------------------------------------------------------------------------
+  # S3 — Scraper output (teams.json, rankings.json)
+  # ---------------------------------------------------------------------------
+  ScraperBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub ncaa-marketplace-scraper-${Environment}-${AWS::AccountId}
+      VersioningConfiguration:
+        Status: Enabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags:
+        - Key: Project
+          Value: ncaa-marketplace
+
+  # ---------------------------------------------------------------------------
+  # S3 — Frontend static assets (served via CloudFront)
+  # ---------------------------------------------------------------------------
+  FrontendBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub ncaa-marketplace-frontend-${Environment}-${AWS::AccountId}
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags:
+        - Key: Project
+          Value: ncaa-marketplace
+
+  # ---------------------------------------------------------------------------
+  # SSM Parameters — consumed by other stacks and GitHub Actions
+  # ---------------------------------------------------------------------------
+  ParamDeployBucket:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /ncaa-marketplace/${Environment}/deploy-bucket
+      Type: String
+      Value: !Ref DeployBucket
+
+  ParamImportBucket:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /ncaa-marketplace/${Environment}/import-bucket
+      Type: String
+      Value: !Ref ImportBucket
+
+  ParamScraperBucket:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /ncaa-marketplace/${Environment}/scraper-bucket
+      Type: String
+      Value: !Ref ScraperBucket
+
+  ParamFrontendBucket:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /ncaa-marketplace/${Environment}/frontend-bucket
+      Type: String
+      Value: !Ref FrontendBucket
+
+  ParamTeamsTable:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /ncaa-marketplace/${Environment}/teams-table
+      Type: String
+      Value: !Ref TeamsTable
+
+  ParamSchedulesTable:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /ncaa-marketplace/${Environment}/schedules-table
+      Type: String
+      Value: !Ref SchedulesTable
+
+  ParamMarketplaceTable:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /ncaa-marketplace/${Environment}/marketplace-table
+      Type: String
+      Value: !Ref MarketplaceTable
+
+  ParamImportJobsTable:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /ncaa-marketplace/${Environment}/import-jobs-table
+      Type: String
+      Value: !Ref ImportJobsTable
+
+Outputs:
+  DeployBucketName:
+    Value: !Ref DeployBucket
+  ImportBucketName:
+    Value: !Ref ImportBucket
+  ScraperBucketName:
+    Value: !Ref ScraperBucket
+  FrontendBucketName:
+    Value: !Ref FrontendBucket
+  TeamsTableName:
+    Value: !Ref TeamsTable
+  SchedulesTableName:
+    Value: !Ref SchedulesTable
+  MarketplaceTableName:
+    Value: !Ref MarketplaceTable
+  ImportJobsTableName:
+    Value: !Ref ImportJobsTable

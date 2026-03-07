@@ -1,0 +1,138 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Cognito User Pool, App Client, and Hosted UI domain for NCAA Schedule Marketplace.
+
+Parameters:
+  Environment:
+    Type: String
+    Default: prod
+    AllowedValues: [prod, staging]
+  AppDomain:
+    Type: String
+    Description: >
+      Your app's domain (used for Cognito callback URL).
+      Use http://localhost:5173 for local dev.
+    Default: http://localhost:5173
+  CognitoDomainPrefix:
+    Type: String
+    Description: >
+      Unique prefix for the Cognito hosted UI domain.
+      Results in: https://{prefix}.auth.{region}.amazoncognito.com
+    Default: ncaa-schedule-marketplace
+
+Resources:
+
+  # ---------------------------------------------------------------------------
+  # User Pool
+  # ---------------------------------------------------------------------------
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      UserPoolName: !Sub ncaa-marketplace-${Environment}
+      AutoVerifiedAttributes:
+        - email
+      UsernameAttributes:
+        - email
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireLowercase: true
+          RequireUppercase: true
+          RequireNumbers: true
+          RequireSymbols: false
+      Schema:
+        - Name: email
+          AttributeDataType: String
+          Required: true
+          Mutable: true
+        - Name: team_id
+          AttributeDataType: String
+          Required: false
+          Mutable: true
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
+      UserPoolTags:
+        Project: ncaa-marketplace
+        Environment: !Ref Environment
+
+  # ---------------------------------------------------------------------------
+  # App Client (used by the Vue SPA — no client secret, PKCE flow)
+  # ---------------------------------------------------------------------------
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: !Sub ncaa-marketplace-spa-${Environment}
+      UserPoolId: !Ref UserPool
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_USER_SRP_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+      AllowedOAuthFlows:
+        - code
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthScopes:
+        - openid
+        - email
+        - profile
+      CallbackURLs:
+        - !Sub ${AppDomain}/callback
+        - http://localhost:5173/callback
+      LogoutURLs:
+        - !Sub ${AppDomain}/login
+        - http://localhost:5173/login
+      SupportedIdentityProviders:
+        - COGNITO
+      PreventUserExistenceErrors: ENABLED
+      RefreshTokenValidity: 30
+      AccessTokenValidity: 1
+      IdTokenValidity: 1
+      TokenValidityUnits:
+        AccessToken: hours
+        IdToken: hours
+        RefreshToken: days
+
+  # ---------------------------------------------------------------------------
+  # Hosted UI domain
+  # ---------------------------------------------------------------------------
+  UserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      Domain: !Sub ${CognitoDomainPrefix}-${Environment}
+      UserPoolId: !Ref UserPool
+
+  # ---------------------------------------------------------------------------
+  # SSM Parameters
+  # ---------------------------------------------------------------------------
+  ParamUserPoolId:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /ncaa-marketplace/${Environment}/cognito-user-pool-id
+      Type: String
+      Value: !Ref UserPool
+
+  ParamClientId:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /ncaa-marketplace/${Environment}/cognito-client-id
+      Type: String
+      Value: !Ref UserPoolClient
+
+  ParamCognitoDomain:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /ncaa-marketplace/${Environment}/cognito-domain
+      Type: String
+      Value: !Sub https://${CognitoDomainPrefix}-${Environment}.auth.${AWS::Region}.amazoncognito.com
+
+Outputs:
+  UserPoolId:
+    Value: !Ref UserPool
+  UserPoolClientId:
+    Value: !Ref UserPoolClient
+  CognitoHostedUIDomain:
+    Value: !Sub https://${CognitoDomainPrefix}-${Environment}.auth.${AWS::Region}.amazoncognito.com
+    Description: Set this as VITE_COGNITO_DOMAIN in your frontend .env

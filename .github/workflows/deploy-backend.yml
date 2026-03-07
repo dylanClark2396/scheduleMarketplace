@@ -1,0 +1,134 @@
+name: Deploy Backend
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/**'
+      - '.github/workflows/deploy-backend.yml'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment
+        required: true
+        default: prod
+        type: choice
+        options: [prod, staging]
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    name: Build & deploy backend
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment || 'prod' }}
+
+    env:
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+      ENV: ${{ inputs.environment || 'prod' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      - name: Install dependencies
+        working-directory: backend
+        run: pnpm install --frozen-lockfile
+
+      - name: Build bundles
+        working-directory: backend
+        run: pnpm build
+        # Outputs:
+        #   dist/lambda.js           — API Lambda handler
+        #   dist/importProcessor.js  — import processor Lambda handler
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Resolve function names from SSM
+        id: ssm
+        run: |
+          API_FN=$(aws ssm get-parameter \
+            --name /ncaa-marketplace/$ENV/api-function-name \
+            --query Parameter.Value --output text)
+          IMPORT_FN=$(aws ssm get-parameter \
+            --name /ncaa-marketplace/$ENV/import-processor-function-name \
+            --query Parameter.Value --output text)
+          DEPLOY_BUCKET=$(aws ssm get-parameter \
+            --name /ncaa-marketplace/$ENV/deploy-bucket \
+            --query Parameter.Value --output text)
+          echo "api_fn=$API_FN" >> $GITHUB_OUTPUT
+          echo "import_fn=$IMPORT_FN" >> $GITHUB_OUTPUT
+          echo "deploy_bucket=$DEPLOY_BUCKET" >> $GITHUB_OUTPUT
+
+      - name: Package bundles
+        working-directory: backend
+        run: |
+          # Single zip contains both handlers — Lambda uses the correct one via `Handler:` config
+          zip -j backend.zip dist/lambda.js dist/importProcessor.js
+          ls -lh backend.zip
+
+      - name: Upload bundle to S3
+        working-directory: backend
+        run: |
+          aws s3 cp backend.zip \
+            s3://${{ steps.ssm.outputs.deploy_bucket }}/backend/backend.zip \
+            --metadata "git-sha=${{ github.sha }}"
+
+      - name: Update API Lambda code
+        run: |
+          aws lambda update-function-code \
+            --function-name ${{ steps.ssm.outputs.api_fn }} \
+            --s3-bucket ${{ steps.ssm.outputs.deploy_bucket }} \
+            --s3-key backend/backend.zip \
+            --no-cli-pager
+
+      - name: Update import processor Lambda code
+        run: |
+          aws lambda update-function-code \
+            --function-name ${{ steps.ssm.outputs.import_fn }} \
+            --s3-bucket ${{ steps.ssm.outputs.deploy_bucket }} \
+            --s3-key backend/backend.zip \
+            --no-cli-pager
+
+      - name: Wait for both functions to finish updating
+        run: |
+          aws lambda wait function-updated \
+            --function-name ${{ steps.ssm.outputs.api_fn }}
+          aws lambda wait function-updated \
+            --function-name ${{ steps.ssm.outputs.import_fn }}
+          echo "Both functions updated."
+
+      - name: Health check
+        run: |
+          API_URL=$(aws ssm get-parameter \
+            --name /ncaa-marketplace/$ENV/api-url \
+            --query Parameter.Value --output text)
+
+          echo "Checking $API_URL/health"
+          for i in $(seq 1 5); do
+            sleep 3
+            HTTP=$(curl -s -o /dev/null -w "%{http_code}" "$API_URL/health" || echo "000")
+            echo "[$i/5] HTTP $HTTP"
+            if [ "$HTTP" = "200" ]; then
+              echo "API is healthy!"
+              exit 0
+            fi
+          done
+
+          echo "Health check failed"
+          exit 1

@@ -1,0 +1,162 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  CloudFront distribution and S3 bucket policy for the NCAA Schedule
+  Marketplace frontend. Uses Origin Access Control (OAC) so S3 stays private.
+
+Parameters:
+  Environment:
+    Type: String
+    Default: prod
+    AllowedValues: [prod, staging]
+
+  # Read from SSM — set by 02-storage stack
+  FrontendBucketName:
+    Type: AWS::SSM::Parameter::Value<String>
+    Default: /ncaa-marketplace/prod/frontend-bucket
+
+  # Optional custom domain — leave blank to use the CloudFront *.cloudfront.net domain
+  CustomDomain:
+    Type: String
+    Default: ''
+    Description: Custom domain, e.g. schedulemarketplace.com (leave empty to skip)
+
+  # ACM certificate ARN (must be in us-east-1 for CloudFront)
+  AcmCertArn:
+    Type: String
+    Default: ''
+    Description: ACM certificate ARN in us-east-1 (required if CustomDomain is set)
+
+Conditions:
+  HasCustomDomain: !Not [!Equals [!Ref CustomDomain, '']]
+
+Resources:
+
+  # ---------------------------------------------------------------------------
+  # Origin Access Control — CloudFront can read the private S3 bucket
+  # ---------------------------------------------------------------------------
+  OriginAccessControl:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub ncaa-marketplace-oac-${Environment}
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  # ---------------------------------------------------------------------------
+  # S3 Bucket Policy — only allow CloudFront OAC to read
+  # ---------------------------------------------------------------------------
+  FrontendBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref FrontendBucketName
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowCloudFrontOAC
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub arn:aws:s3:::${FrontendBucketName}/*
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub arn:aws:cloudfront::${AWS::AccountId}:distribution/${Distribution}
+
+  # ---------------------------------------------------------------------------
+  # CloudFront Distribution
+  # ---------------------------------------------------------------------------
+  Distribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      Tags:
+        - Key: Project
+          Value: ncaa-marketplace
+        - Key: Environment
+          Value: !Ref Environment
+      DistributionConfig:
+        Enabled: true
+        Comment: !Sub NCAA Schedule Marketplace frontend (${Environment})
+        HttpVersion: http2and3
+        PriceClass: PriceClass_100     # US, Canada, Europe — cheapest
+
+        # SPA routing — unknown paths → index.html (Vue Router handles them)
+        CustomErrorResponses:
+          - ErrorCode: 403
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+            ErrorCachingMinTTL: 0
+          - ErrorCode: 404
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+            ErrorCachingMinTTL: 0
+
+        DefaultRootObject: index.html
+
+        Origins:
+          - Id: S3Origin
+            DomainName: !Sub ${FrontendBucketName}.s3.${AWS::Region}.amazonaws.com
+            S3OriginConfig:
+              OriginAccessIdentity: ''      # empty — using OAC, not OAI
+            OriginAccessControlId: !GetAtt OriginAccessControl.Id
+
+        DefaultCacheBehavior:
+          TargetOriginId: S3Origin
+          ViewerProtocolPolicy: redirect-to-https
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6  # CachingOptimized
+          OriginRequestPolicyId: 88a5eaf4-2fd4-4709-b370-b4c650ea3fcf  # CORS-S3Origin
+          Compress: true
+          AllowedMethods: [GET, HEAD, OPTIONS]
+          CachedMethods: [GET, HEAD]
+
+        # Skip cache for HTML and service worker (always fresh)
+        CacheBehaviors:
+          - PathPattern: '*.html'
+            TargetOriginId: S3Origin
+            ViewerProtocolPolicy: redirect-to-https
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad  # CachingDisabled
+            AllowedMethods: [GET, HEAD]
+            Compress: true
+          - PathPattern: '/service-worker.js'
+            TargetOriginId: S3Origin
+            ViewerProtocolPolicy: redirect-to-https
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad  # CachingDisabled
+            AllowedMethods: [GET, HEAD]
+            Compress: false
+
+        Aliases: !If
+          - HasCustomDomain
+          - - !Ref CustomDomain
+          - !Ref AWS::NoValue
+
+        ViewerCertificate: !If
+          - HasCustomDomain
+          - AcmCertificateArn: !Ref AcmCertArn
+            SslSupportMethod: sni-only
+            MinimumProtocolVersion: TLSv1.2_2021
+          - CloudFrontDefaultCertificate: true
+
+  # ---------------------------------------------------------------------------
+  # SSM Parameters
+  # ---------------------------------------------------------------------------
+  ParamDistributionId:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /ncaa-marketplace/${Environment}/cloudfront-distribution-id
+      Type: String
+      Value: !Ref Distribution
+
+  ParamDistributionDomain:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /ncaa-marketplace/${Environment}/cloudfront-domain
+      Type: String
+      Value: !GetAtt Distribution.DomainName
+
+Outputs:
+  DistributionId:
+    Value: !Ref Distribution
+    Description: Paste into GitHub secret CLOUDFRONT_DISTRIBUTION_ID
+  DistributionDomain:
+    Value: !Sub https://${Distribution.DomainName}
+    Description: Frontend URL
