@@ -200,11 +200,6 @@ def fetch_team_stats(team: dict) -> dict:
 
     team_obj = data.get("team", {})
 
-    # Conference
-    conf = team_obj.get("groups", {})
-    if isinstance(conf, dict) and conf.get("name"):
-        team["conference"] = conf["name"]
-
     # Records — ESPN returns an array of record objects
     records = team_obj.get("record", {}).get("items", [])
     for rec in records:
@@ -310,26 +305,30 @@ def scrape_net_rankings() -> list[dict]:
 
 
 def merge_rankings_into_teams(rankings: list[dict], teams: list[dict]) -> list[dict]:
-    """Apply NET rankings to the teams list. Matches by name (exact then partial)."""
-    rank_map = {r["teamName"].lower(): r["rank"] for r in rankings}
+    """
+    Apply NET rankings and conference to the teams list.
+    Matches by name (exact then partial).
+    Conference comes from the NET rankings response since ESPN's API
+    doesn't reliably return conference names.
+    """
+    rank_map = {r["teamName"].lower(): r for r in rankings}
 
     for team in teams:
-        # Skip if ESPN already gave us a NET ranking
-        if team.get("netRanking"):
-            continue
-
         name_lower = team["name"].lower()
-        net = rank_map.get(name_lower)
+        entry = rank_map.get(name_lower)
 
-        if not net:
+        if not entry:
             # Partial match fallback
-            for rname, rank in rank_map.items():
+            for rname, r in rank_map.items():
                 if rname in name_lower or name_lower in rname:
-                    net = rank
+                    entry = r
                     break
 
-        if net:
-            team["netRanking"] = net
+        if entry:
+            if not team.get("netRanking"):
+                team["netRanking"] = entry["rank"]
+            if not team.get("conference"):
+                team["conference"] = entry.get("conference", "")
 
     return teams
 
@@ -380,12 +379,15 @@ def main():
 
     elif args.target == "teams":
         teams = scrape_teams_espn()
-        # Load existing rankings if available to merge
+        # Use cached rankings if available, otherwise fetch live
         rankings_file = OUTPUT_DIR / "rankings.json"
         if rankings_file.exists():
             with open(rankings_file) as f:
                 rankings = json.load(f)
-            teams = merge_rankings_into_teams(rankings, teams)
+        else:
+            rankings = scrape_net_rankings()
+            save_json(rankings, "rankings.json")
+        teams = merge_rankings_into_teams(rankings, teams)
         path = save_json(teams, "teams.json")
         if args.upload_s3 and s3_bucket:
             upload_to_s3(path, s3_bucket, "scraper/teams.json")
