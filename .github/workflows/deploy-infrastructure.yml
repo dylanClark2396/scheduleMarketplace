@@ -72,15 +72,25 @@ jobs:
             --no-fail-on-empty-changeset
 
       # -----------------------------------------------------------------------
-      # 04 — Compute
+      # 04 — Lambda + API Gateway
       # -----------------------------------------------------------------------
-      - name: Deploy 04-compute
-        if: inputs.stacks == 'all' || contains(inputs.stacks, '04') || contains(inputs.stacks, 'compute')
+      - name: Deploy 04-lambda
+        if: inputs.stacks == 'all' || contains(inputs.stacks, '04') || contains(inputs.stacks, 'lambda')
         run: |
           aws cloudformation deploy \
-            --stack-name schedule-marketplace-compute-$ENV \
-            --template-file infra/cfn/04-compute.yml \
-            --parameter-overrides Environment=$ENV \
+            --stack-name schedule-marketplace-lambda-$ENV \
+            --template-file infra/cfn/04-lambda.yml \
+            --parameter-overrides \
+              Environment=$ENV \
+              "DeployBucket=/schedule-marketplace/$ENV/deploy-bucket" \
+              "TeamsTable=/schedule-marketplace/$ENV/teams-table" \
+              "SchedulesTable=/schedule-marketplace/$ENV/schedules-table" \
+              "MarketplaceTable=/schedule-marketplace/$ENV/marketplace-table" \
+              "ImportJobsTable=/schedule-marketplace/$ENV/import-jobs-table" \
+              "ImportBucket=/schedule-marketplace/$ENV/import-bucket" \
+              "ScraperBucket=/schedule-marketplace/$ENV/scraper-bucket" \
+              "CognitoUserPoolId=/schedule-marketplace/$ENV/cognito-user-pool-id" \
+              "CognitoClientId=/schedule-marketplace/$ENV/cognito-client-id" \
             --capabilities CAPABILITY_NAMED_IAM \
             --no-fail-on-empty-changeset
 
@@ -106,7 +116,7 @@ jobs:
         if: always()
         run: |
           echo "=== Stack Outputs ==="
-          for stack in storage cognito compute cdn; do
+          for stack in storage cognito lambda cdn; do
             echo "--- schedule-marketplace-$stack-$ENV ---"
             aws cloudformation describe-stacks \
               --stack-name schedule-marketplace-$stack-$ENV \

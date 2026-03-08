@@ -6,10 +6,10 @@ Description: >
 Parameters:
   GitHubOrg:
     Type: String
-    Description: GitHub org or username (e.g. "myorg")
+    Description: GitHub org or username
   GitHubRepo:
     Type: String
-    Description: GitHub repository name (e.g. "scheduleMarketplace")
+    Description: GitHub repository name
   Environment:
     Type: String
     Default: prod
@@ -118,7 +118,7 @@ Resources:
             Resource:
               - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/schedule-marketplace/*
 
-          # Lambda — update function code and read config (for deploy workflow)
+          # Lambda — update function code, read config, and invoke (for deploy + scraper workflows)
           - Sid: LambdaDeploy
             Effect: Allow
             Action:
@@ -127,6 +127,7 @@ Resources:
               - lambda:GetFunctionConfiguration
               - lambda:ListVersionsByFunction
               - lambda:PublishVersion
+              - lambda:InvokeFunction
             Resource:
               - !Sub arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:schedule-marketplace-*
 
