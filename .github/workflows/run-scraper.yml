@@ -19,7 +19,7 @@ on:
         required: true
         default: prod
         type: choice
-        options: [prod, staging]
+        options: [prod, dev]
       upload_s3:
         description: Upload output to S3
         required: true

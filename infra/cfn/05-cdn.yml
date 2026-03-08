@@ -7,7 +7,7 @@ Parameters:
   Environment:
     Type: String
     Default: prod
-    AllowedValues: [prod, staging]
+    AllowedValues: [prod, dev]
 
   # Read from SSM — set by 02-storage stack
   FrontendBucketName:

@@ -8,7 +8,7 @@ on:
         required: true
         default: prod
         type: choice
-        options: [prod, staging]
+        options: [prod, dev]
       stacks:
         description: Which stacks to deploy (comma-separated, or "all")
         required: true

@@ -8,7 +8,7 @@ Parameters:
   Environment:
     Type: String
     Default: prod
-    AllowedValues: [prod, staging]
+    AllowedValues: [prod, dev]
 
   # Resolved from SSM at CFN deploy time (written by 02-storage + 03-cognito stacks)
   DeployBucket:

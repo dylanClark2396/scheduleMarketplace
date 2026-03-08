@@ -6,7 +6,7 @@ Parameters:
   Environment:
     Type: String
     Default: prod
-    AllowedValues: [prod, staging]
+    AllowedValues: [prod, dev]
   AppDomain:
     Type: String
     Description: >
