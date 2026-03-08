@@ -177,7 +177,7 @@ const parseErrors = ref<string[]>([])
 
 const manualTeamId = ref<string | null>(null)
 const manualSeason = ref(SEASONS[1])
-const manualGames = ref<Array<{ date: string; opponentName: string; location: string; isConference: boolean }>>([])
+const manualGames = ref<Array<{ date: Date | null; opponentName: string; location: string; isConference: boolean }>>([])
 
 onMounted(async () => {
   allTeams.value = await api.getTeams()
@@ -261,7 +261,7 @@ async function confirmImport() {
 }
 
 function addManualRow() {
-  manualGames.value.push({ date: '', opponentName: '', location: 'home', isConference: false })
+  manualGames.value.push({ date: null, opponentName: '', location: 'home', isConference: false })
 }
 
 async function saveManual() {
@@ -271,7 +271,7 @@ async function saveManual() {
     season: manualSeason.value,
     games: manualGames.value.map((g, i) => ({
       id: String(i),
-      date: g.date,
+      date: g.date ? g.date.toISOString().split('T')[0] : '',
       opponentId: '',
       opponentName: g.opponentName,
       opponentNetRanking: null,

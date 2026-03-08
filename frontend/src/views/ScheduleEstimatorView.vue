@@ -248,7 +248,7 @@
       <div class="add-game-form">
         <div class="field">
           <label>Date</label>
-          <DatePicker v-model="newGame.date" date-format="yy-mm-dd" />
+          <DatePicker v-model="newGameDate" date-format="yy-mm-dd" />
         </div>
         <div class="field">
           <label>Opponent</label>
@@ -292,7 +292,7 @@ const api = useApi()
 
 const allTeams = ref<Team[]>([])
 const selectedTeam = ref<Team | null>(null)
-const selectedSeason = ref(SEASONS[1])
+const selectedSeason = ref<string>(SEASONS[1] ?? '')
 const schedule = ref<TeamSchedule | null>(null)
 const loadingSchedule = ref(false)
 const loadingSuggestions = ref(false)
@@ -326,6 +326,11 @@ const sosDeltaSeverity = computed(() => {
 const newGame = ref<Partial<Game>>({
   location: 'home',
   isConference: false,
+})
+
+const newGameDate = computed<Date | null>({
+  get: () => newGame.value.date ? new Date(newGame.value.date + 'T00:00:00') : null,
+  set: (d) => { newGame.value.date = d ? d.toISOString().split('T')[0] : undefined },
 })
 
 onMounted(async () => {

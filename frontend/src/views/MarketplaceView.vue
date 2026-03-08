@@ -85,12 +85,12 @@
 
         <div class="field">
           <label>Your Team *</label>
-          <TeamSearch :teams="allTeams" @select="t => form.teamId = t.id; form.teamName = t.name; form.conference = t.conference; form.currentNetRanking = t.netRanking" />
+          <TeamSearch :teams="allTeams" @select="onFormTeamSelect" />
         </div>
 
         <div class="field">
           <label>Date *</label>
-          <DatePicker v-model="form.date" date-format="yy-mm-dd" />
+          <DatePicker v-model="formDate" date-format="yy-mm-dd" />
         </div>
 
         <div class="field">
@@ -212,6 +212,18 @@ const form = ref<Partial<MarketplaceListing>>({
   compensationNotes: '',
   notes: '',
 })
+
+const formDate = computed<Date | null>({
+  get: () => form.value.date ? new Date(form.value.date + 'T00:00:00') : null,
+  set: (d) => { form.value.date = d ? d.toISOString().split('T')[0] : undefined },
+})
+
+function onFormTeamSelect(t: Team) {
+  form.value.teamId = t.id
+  form.value.teamName = t.name
+  form.value.conference = t.conference
+  form.value.currentNetRanking = t.netRanking
+}
 
 const filteredListings = computed(() => {
   return listings.value.filter(l => {
