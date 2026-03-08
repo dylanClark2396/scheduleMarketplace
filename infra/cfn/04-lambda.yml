@@ -1,7 +1,7 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: >
   Lambda functions (API + import processor) and API Gateway HTTP API
-  for the NCAA Schedule Marketplace backend.
+  for the Schedule Marketplace backend.
   Replaces the EC2 compute stack.
 
 Parameters:
@@ -13,39 +13,39 @@ Parameters:
   # Resolved from SSM at CFN deploy time (written by 02-storage + 03-cognito stacks)
   DeployBucket:
     Type: AWS::SSM::Parameter::Value<String>
-    Default: /ncaa-marketplace/prod/deploy-bucket
+    Default: /schedule-marketplace/prod/deploy-bucket
 
   TeamsTable:
     Type: AWS::SSM::Parameter::Value<String>
-    Default: /ncaa-marketplace/prod/teams-table
+    Default: /schedule-marketplace/prod/teams-table
 
   SchedulesTable:
     Type: AWS::SSM::Parameter::Value<String>
-    Default: /ncaa-marketplace/prod/schedules-table
+    Default: /schedule-marketplace/prod/schedules-table
 
   MarketplaceTable:
     Type: AWS::SSM::Parameter::Value<String>
-    Default: /ncaa-marketplace/prod/marketplace-table
+    Default: /schedule-marketplace/prod/marketplace-table
 
   ImportJobsTable:
     Type: AWS::SSM::Parameter::Value<String>
-    Default: /ncaa-marketplace/prod/import-jobs-table
+    Default: /schedule-marketplace/prod/import-jobs-table
 
   ImportBucket:
     Type: AWS::SSM::Parameter::Value<String>
-    Default: /ncaa-marketplace/prod/import-bucket
+    Default: /schedule-marketplace/prod/import-bucket
 
   ScraperBucket:
     Type: AWS::SSM::Parameter::Value<String>
-    Default: /ncaa-marketplace/prod/scraper-bucket
+    Default: /schedule-marketplace/prod/scraper-bucket
 
   CognitoUserPoolId:
     Type: AWS::SSM::Parameter::Value<String>
-    Default: /ncaa-marketplace/prod/cognito-user-pool-id
+    Default: /schedule-marketplace/prod/cognito-user-pool-id
 
   CognitoClientId:
     Type: AWS::SSM::Parameter::Value<String>
-    Default: /ncaa-marketplace/prod/cognito-client-id
+    Default: /schedule-marketplace/prod/cognito-client-id
 
 Resources:
 
@@ -55,7 +55,7 @@ Resources:
   LambdaExecutionRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub ncaa-marketplace-lambda-${Environment}
+      RoleName: !Sub schedule-marketplace-lambda-${Environment}
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -66,7 +66,7 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
       Policies:
-        - PolicyName: ncaa-marketplace-lambda
+        - PolicyName: schedule-marketplace-lambda
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
@@ -84,8 +84,8 @@ Resources:
                   - dynamodb:BatchGetItem
                   - dynamodb:BatchWriteItem
                 Resource:
-                  - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/ncaa_*
-                  - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/ncaa_*/index/*
+                  - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/*
+                  - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/*/index/*
 
               # S3 — import and scraper buckets
               - Sid: S3
@@ -115,7 +115,7 @@ Resources:
                 Action:
                   - lambda:InvokeFunction
                 Resource:
-                  - !GetAtt ImportProcessorFunction.Arn
+                  - !Sub arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:schedule-marketplace-import-processor-${Environment}
 
   # ---------------------------------------------------------------------------
   # API Lambda — wraps Express app via serverless-express
@@ -123,8 +123,8 @@ Resources:
   ApiFunction:
     Type: AWS::Lambda::Function
     Properties:
-      FunctionName: !Sub ncaa-marketplace-api-${Environment}
-      Description: NCAA Schedule Marketplace REST API
+      FunctionName: !Sub schedule-marketplace-api-${Environment}
+      Description: Schedule Marketplace REST API
       Runtime: nodejs20.x
       Handler: lambda.handler
       Role: !GetAtt LambdaExecutionRole.Arn
@@ -152,7 +152,7 @@ Resources:
           IMPORT_PROCESSOR_FUNCTION_NAME: !Ref ImportProcessorFunction
       Tags:
         - Key: Project
-          Value: ncaa-marketplace
+          Value: schedule-marketplace
         - Key: Environment
           Value: !Ref Environment
 
@@ -162,7 +162,7 @@ Resources:
   ImportProcessorFunction:
     Type: AWS::Lambda::Function
     Properties:
-      FunctionName: !Sub ncaa-marketplace-import-processor-${Environment}
+      FunctionName: !Sub schedule-marketplace-import-processor-${Environment}
       Description: Async schedule import processor (Textract / CSV)
       Runtime: nodejs20.x
       Handler: importProcessor.handler
@@ -182,7 +182,7 @@ Resources:
           IMPORT_JOBS_TABLE: !Ref ImportJobsTable
       Tags:
         - Key: Project
-          Value: ncaa-marketplace
+          Value: schedule-marketplace
         - Key: Environment
           Value: !Ref Environment
 
@@ -192,8 +192,8 @@ Resources:
   HttpApi:
     Type: AWS::ApiGatewayV2::Api
     Properties:
-      Name: !Sub ncaa-marketplace-${Environment}
-      Description: NCAA Schedule Marketplace API
+      Name: !Sub schedule-marketplace-${Environment}
+      Description: Schedule Marketplace API
       ProtocolType: HTTP
       CorsConfiguration:
         AllowOrigins:
@@ -210,7 +210,7 @@ Resources:
           - Authorization
         MaxAge: 300
       Tags:
-        Project: ncaa-marketplace
+        Project: schedule-marketplace
         Environment: !Ref Environment
 
   ApiIntegration:
@@ -249,21 +249,21 @@ Resources:
   ParamApiUrl:
     Type: AWS::SSM::Parameter
     Properties:
-      Name: !Sub /ncaa-marketplace/${Environment}/api-url
+      Name: !Sub /schedule-marketplace/${Environment}/api-url
       Type: String
       Value: !Sub https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com
 
   ParamApiFunctionName:
     Type: AWS::SSM::Parameter
     Properties:
-      Name: !Sub /ncaa-marketplace/${Environment}/api-function-name
+      Name: !Sub /schedule-marketplace/${Environment}/api-function-name
       Type: String
       Value: !Ref ApiFunction
 
   ParamImportProcessorFunctionName:
     Type: AWS::SSM::Parameter
     Properties:
-      Name: !Sub /ncaa-marketplace/${Environment}/import-processor-function-name
+      Name: !Sub /schedule-marketplace/${Environment}/import-processor-function-name
       Type: String
       Value: !Ref ImportProcessorFunction
 

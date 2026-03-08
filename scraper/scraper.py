@@ -1,15 +1,15 @@
 """
-NCAA D1 Men's Basketball Data Scraper
+D1 Men's Basketball Data Scraper
 
 Sources:
   - https://www.ncaa.com/stats/basketball-men  (team stats)
   - NET rankings page (when available)
 
 Usage:
-  python ncaa_scraper.py --target teams
-  python ncaa_scraper.py --target rankings
-  python ncaa_scraper.py --target stats
-  python ncaa_scraper.py --target all
+  python scraper.py --target teams
+  python scraper.py --target rankings
+  python scraper.py --target stats
+  python scraper.py --target all
 
 Output: scraper/output/{teams,rankings,stats}.json
         (also optionally uploaded to S3)
@@ -40,7 +40,7 @@ REQUEST_DELAY = 1.5
 
 HEADERS = {
     "User-Agent": (
-        "Mozilla/5.0 (compatible; NCAAScheduleScraper/1.0; "
+        "Mozilla/5.0 (compatible; ScheduleMarketplaceScraper/1.0; "
         "+https://github.com/example/schedule-marketplace)"
     ),
     "Accept": "text/html,application/xhtml+xml",
@@ -85,12 +85,12 @@ def save_json(data: list | dict, filename: str) -> Path:
 
 def scrape_teams() -> list[dict]:
     """
-    Scrape D1 team list from NCAA stats site.
+    Scrape D1 team list from the stats site.
     Returns list of {id, name, shortName, conference, division}.
     """
     print("\n[Teams] Scraping D1 team list...")
 
-    # NCAA stats team list page — the dropdown on the stats site
+    # Stats team list page — the dropdown on the stats site
     url = f"{STATS_BASE}/d1/p1"
     soup = fetch_page(url)
     if not soup:
@@ -149,7 +149,7 @@ def _make_short_name(name: str) -> str:
 # STATS SCRAPER
 # ========================
 
-# NCAA D1 stats category pages (from https://www.ncaa.com/stats/basketball-men)
+# D1 stats category pages (from https://www.ncaa.com/stats/basketball-men)
 STAT_CATEGORIES = {
     "scoring_offense":   "/d1/current/p1/c110",
     "scoring_defense":   "/d1/current/p1/c111",
@@ -161,7 +161,7 @@ STAT_CATEGORIES = {
 
 def scrape_stats(teams_by_id: dict) -> dict:
     """
-    Scrape team stats from NCAA stats pages.
+    Scrape team stats from stats pages.
     Updates teams_by_id in-place and returns it.
     """
     print("\n[Stats] Scraping team stats...")
@@ -255,8 +255,8 @@ def scrape_net_rankings() -> list[dict]:
     """
     Scrape NET rankings.
     The official NET rankings are published at ncaa.com during the season.
-    This function tries the official page; falls back to a known ESPN/
-    public data page if unavailable.
+    This function tries the official page; falls back to a known public data
+    page if unavailable.
 
     Returns list of {rank, teamName, conference, record}.
     """
@@ -264,7 +264,7 @@ def scrape_net_rankings() -> list[dict]:
 
     rankings = []
 
-    # Attempt 1: NCAA official NET page (published in-season)
+    # Attempt 1: official NET page (published in-season)
     url = f"{BASE_URL}/rankings/basketball-men/d1"
     soup = fetch_page(url)
 
@@ -284,7 +284,7 @@ def scrape_net_rankings() -> list[dict]:
                 })
 
     if not rankings:
-        print("  Could not parse rankings from NCAA page. Rankings may not be published yet.")
+        print("  Could not parse rankings. Rankings may not be published yet.")
         print("  During the season (Nov-Mar) try running again.")
 
     print(f"  Found {len(rankings)} NET rankings.")
@@ -326,7 +326,7 @@ def upload_to_s3(local_path: Path, bucket: str, key: str):
 # ========================
 
 def main():
-    parser = argparse.ArgumentParser(description="NCAA Schedule Marketplace Scraper")
+    parser = argparse.ArgumentParser(description="Schedule Marketplace Scraper")
     parser.add_argument(
         "--target",
         choices=["teams", "rankings", "stats", "all"],

@@ -49,7 +49,7 @@ jobs:
         if: inputs.stacks == 'all' || contains(inputs.stacks, '02') || contains(inputs.stacks, 'storage')
         run: |
           aws cloudformation deploy \
-            --stack-name ncaa-marketplace-storage-$ENV \
+            --stack-name schedule-marketplace-storage-$ENV \
             --template-file infra/cfn/02-storage.yml \
             --parameter-overrides Environment=$ENV \
             --capabilities CAPABILITY_NAMED_IAM \
@@ -62,12 +62,12 @@ jobs:
         if: inputs.stacks == 'all' || contains(inputs.stacks, '03') || contains(inputs.stacks, 'cognito')
         run: |
           aws cloudformation deploy \
-            --stack-name ncaa-marketplace-cognito-$ENV \
+            --stack-name schedule-marketplace-cognito-$ENV \
             --template-file infra/cfn/03-cognito.yml \
             --parameter-overrides \
               Environment=$ENV \
               AppDomain=${{ vars.APP_DOMAIN || 'http://localhost:5173' }} \
-              CognitoDomainPrefix=${{ vars.COGNITO_DOMAIN_PREFIX || 'ncaa-schedule-marketplace' }} \
+              CognitoDomainPrefix=${{ vars.COGNITO_DOMAIN_PREFIX || 'schedule-marketplace' }} \
             --capabilities CAPABILITY_NAMED_IAM \
             --no-fail-on-empty-changeset
 
@@ -78,7 +78,7 @@ jobs:
         if: inputs.stacks == 'all' || contains(inputs.stacks, '04') || contains(inputs.stacks, 'compute')
         run: |
           aws cloudformation deploy \
-            --stack-name ncaa-marketplace-compute-$ENV \
+            --stack-name schedule-marketplace-compute-$ENV \
             --template-file infra/cfn/04-compute.yml \
             --parameter-overrides Environment=$ENV \
             --capabilities CAPABILITY_NAMED_IAM \
@@ -91,11 +91,11 @@ jobs:
         if: inputs.stacks == 'all' || contains(inputs.stacks, '05') || contains(inputs.stacks, 'cdn')
         run: |
           aws cloudformation deploy \
-            --stack-name ncaa-marketplace-cdn-$ENV \
+            --stack-name schedule-marketplace-cdn-$ENV \
             --template-file infra/cfn/05-cdn.yml \
             --parameter-overrides \
               Environment=$ENV \
-              "FrontendBucketName=/ncaa-marketplace/$ENV/frontend-bucket" \
+              "FrontendBucketName=/schedule-marketplace/$ENV/frontend-bucket" \
             --capabilities CAPABILITY_NAMED_IAM \
             --no-fail-on-empty-changeset
 
@@ -107,9 +107,9 @@ jobs:
         run: |
           echo "=== Stack Outputs ==="
           for stack in storage cognito compute cdn; do
-            echo "--- ncaa-marketplace-$stack-$ENV ---"
+            echo "--- schedule-marketplace-$stack-$ENV ---"
             aws cloudformation describe-stacks \
-              --stack-name ncaa-marketplace-$stack-$ENV \
+              --stack-name schedule-marketplace-$stack-$ENV \
               --query "Stacks[0].Outputs" \
               --output table 2>/dev/null || echo "(not deployed)"
           done
@@ -117,6 +117,6 @@ jobs:
           echo ""
           echo "=== Key SSM Parameters ==="
           aws ssm get-parameters-by-path \
-            --path /ncaa-marketplace/$ENV/ \
+            --path /schedule-marketplace/$ENV/ \
             --query "Parameters[*].{Name:Name,Value:Value}" \
             --output table 2>/dev/null || true

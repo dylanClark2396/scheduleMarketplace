@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: >
-  EC2 instance, security group, and IAM instance profile for the NCAA
+  EC2 instance, security group, and IAM instance profile for the
   Schedule Marketplace backend API.
 
 Parameters:
@@ -32,7 +32,7 @@ Resources:
   ApiSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: NCAA Marketplace API
+      GroupDescription: Schedule Marketplace API
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 3000
@@ -50,7 +50,7 @@ Resources:
           Description: All outbound
       Tags:
         - Key: Name
-          Value: !Sub ncaa-marketplace-api-${Environment}
+          Value: !Sub schedule-marketplace-api-${Environment}
 
   # ---------------------------------------------------------------------------
   # IAM Role for EC2 — least-privilege for the backend
@@ -58,7 +58,7 @@ Resources:
   EC2Role:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub ncaa-marketplace-ec2-${Environment}
+      RoleName: !Sub schedule-marketplace-ec2-${Environment}
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -70,7 +70,7 @@ Resources:
         # SSM Session Manager — connect to instance without SSH
         - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
       Policies:
-        - PolicyName: ncaa-marketplace-api
+        - PolicyName: schedule-marketplace-api
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
@@ -88,8 +88,8 @@ Resources:
                   - dynamodb:BatchGetItem
                   - dynamodb:BatchWriteItem
                 Resource:
-                  - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/ncaa_*
-                  - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/ncaa_*/index/*
+                  - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/*
+                  - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/*/index/*
 
               # S3 — read/write import & scraper buckets; read deploy bucket
               - Sid: S3ReadWrite
@@ -100,10 +100,10 @@ Resources:
                   - s3:DeleteObject
                   - s3:ListBucket
                 Resource:
-                  - !Sub arn:aws:s3:::ncaa-marketplace-imports-${Environment}-${AWS::AccountId}
-                  - !Sub arn:aws:s3:::ncaa-marketplace-imports-${Environment}-${AWS::AccountId}/*
-                  - !Sub arn:aws:s3:::ncaa-marketplace-scraper-${Environment}-${AWS::AccountId}
-                  - !Sub arn:aws:s3:::ncaa-marketplace-scraper-${Environment}-${AWS::AccountId}/*
+                  - !Sub arn:aws:s3:::schedule-marketplace-imports-${Environment}-${AWS::AccountId}
+                  - !Sub arn:aws:s3:::schedule-marketplace-imports-${Environment}-${AWS::AccountId}/*
+                  - !Sub arn:aws:s3:::schedule-marketplace-scraper-${Environment}-${AWS::AccountId}
+                  - !Sub arn:aws:s3:::schedule-marketplace-scraper-${Environment}-${AWS::AccountId}/*
 
               - Sid: S3DeployRead
                 Effect: Allow
@@ -111,8 +111,8 @@ Resources:
                   - s3:GetObject
                   - s3:ListBucket
                 Resource:
-                  - !Sub arn:aws:s3:::ncaa-marketplace-deploy-${Environment}-${AWS::AccountId}
-                  - !Sub arn:aws:s3:::ncaa-marketplace-deploy-${Environment}-${AWS::AccountId}/*
+                  - !Sub arn:aws:s3:::schedule-marketplace-deploy-${Environment}-${AWS::AccountId}
+                  - !Sub arn:aws:s3:::schedule-marketplace-deploy-${Environment}-${AWS::AccountId}/*
 
               # Textract — analyze documents for schedule OCR
               - Sid: Textract
@@ -130,7 +130,7 @@ Resources:
                   - ssm:GetParameters
                   - ssm:GetParametersByPath
                 Resource:
-                  - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/ncaa-marketplace/${Environment}/*
+                  - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/schedule-marketplace/${Environment}/*
 
               # CloudWatch Logs — structured logging
               - Sid: CloudWatchLogs
@@ -145,7 +145,7 @@ Resources:
   EC2InstanceProfile:
     Type: AWS::IAM::InstanceProfile
     Properties:
-      InstanceProfileName: !Sub ncaa-marketplace-ec2-${Environment}
+      InstanceProfileName: !Sub schedule-marketplace-ec2-${Environment}
       Roles:
         - !Ref EC2Role
 
@@ -168,11 +168,11 @@ Resources:
             DeleteOnTermination: true
       Tags:
         - Key: Name
-          Value: !Sub ncaa-marketplace-api-${Environment}
+          Value: !Sub schedule-marketplace-api-${Environment}
         - Key: Environment
           Value: !Ref Environment
         - Key: Project
-          Value: ncaa-marketplace
+          Value: schedule-marketplace
       UserData:
         Fn::Base64: !Sub |
           #!/bin/bash
@@ -187,22 +187,22 @@ Resources:
           npm install -g pnpm
 
           # Create app directory
-          mkdir -p /opt/ncaa-api
-          chown ec2-user:ec2-user /opt/ncaa-api
+          mkdir -p /opt/schedule-api
+          chown ec2-user:ec2-user /opt/schedule-api
 
           # Create env file generator — pulls secrets from SSM at deploy time
-          cat > /opt/ncaa-api/refresh-env.sh << 'ENVSCRIPT'
+          cat > /opt/schedule-api/refresh-env.sh << 'ENVSCRIPT'
           #!/bin/bash
           set -e
           REGION=$(curl -s http://169.254.169.254/latest/meta-data/placement/region)
-          PREFIX=/ncaa-marketplace/${Environment}
+          PREFIX=/schedule-marketplace/${Environment}
 
           get_param() {
             aws ssm get-parameter --region "$REGION" --name "$PREFIX/$1" \
               --query Parameter.Value --output text 2>/dev/null || echo ""
           }
 
-          cat > /opt/ncaa-api/.env << EOF
+          cat > /opt/schedule-api/.env << EOF
           COGNITO_USER_POOL_ID=$(get_param cognito-user-pool-id)
           COGNITO_CLIENT_ID=$(get_param cognito-client-id)
           S3_IMPORT_BUCKET=$(get_param import-bucket)
@@ -211,73 +211,73 @@ Resources:
           NODE_ENV=production
           EOF
 
-          chmod 600 /opt/ncaa-api/.env
-          chown ec2-user:ec2-user /opt/ncaa-api/.env
+          chmod 600 /opt/schedule-api/.env
+          chown ec2-user:ec2-user /opt/schedule-api/.env
           ENVSCRIPT
-          chmod +x /opt/ncaa-api/refresh-env.sh
+          chmod +x /opt/schedule-api/refresh-env.sh
 
           # Create deploy script — called by GitHub Actions via SSM RunCommand
-          cat > /opt/ncaa-api/deploy.sh << 'DEPLOYSCRIPT'
+          cat > /opt/schedule-api/deploy.sh << 'DEPLOYSCRIPT'
           #!/bin/bash
           set -e
           REGION=$(curl -s http://169.254.169.254/latest/meta-data/placement/region)
           BUCKET=$(aws ssm get-parameter --region "$REGION" \
-            --name /ncaa-marketplace/${Environment}/deploy-bucket \
+            --name /schedule-marketplace/${Environment}/deploy-bucket \
             --query Parameter.Value --output text)
 
           echo "Downloading from s3://$BUCKET/backend/server.zip"
           aws s3 cp --region "$REGION" "s3://$BUCKET/backend/server.zip" /tmp/server.zip
 
           echo "Extracting bundle"
-          unzip -o /tmp/server.zip -d /opt/ncaa-api
-          chown -R ec2-user:ec2-user /opt/ncaa-api
+          unzip -o /tmp/server.zip -d /opt/schedule-api
+          chown -R ec2-user:ec2-user /opt/schedule-api
 
           echo "Refreshing environment config"
-          /opt/ncaa-api/refresh-env.sh
+          /opt/schedule-api/refresh-env.sh
 
           echo "Restarting service"
-          systemctl restart ncaa-api
+          systemctl restart schedule-api
 
           echo "Deploy complete — $(date)"
           DEPLOYSCRIPT
-          chmod +x /opt/ncaa-api/deploy.sh
+          chmod +x /opt/schedule-api/deploy.sh
 
           # Create a minimal placeholder server.js so systemd doesn't fail on first boot
-          cat > /opt/ncaa-api/server.js << 'PLACEHOLDER'
+          cat > /opt/schedule-api/server.js << 'PLACEHOLDER'
           const http = require('http')
           http.createServer((req, res) => {
             res.writeHead(200)
-            res.end('NCAA Marketplace API — awaiting first deploy\n')
+            res.end('Schedule Marketplace API — awaiting first deploy\n')
           }).listen(3000, () => console.log('Placeholder running on :3000'))
           PLACEHOLDER
-          touch /opt/ncaa-api/.env
+          touch /opt/schedule-api/.env
 
           # Systemd service
-          cat > /etc/systemd/system/ncaa-api.service << 'SERVICE'
+          cat > /etc/systemd/system/schedule-api.service << 'SERVICE'
           [Unit]
-          Description=NCAA Schedule Marketplace API
+          Description=Schedule Marketplace API
           After=network.target
           StartLimitIntervalSec=0
 
           [Service]
           Type=simple
           User=ec2-user
-          WorkingDirectory=/opt/ncaa-api
-          EnvironmentFile=/opt/ncaa-api/.env
-          ExecStart=/usr/bin/node /opt/ncaa-api/server.js
+          WorkingDirectory=/opt/schedule-api
+          EnvironmentFile=/opt/schedule-api/.env
+          ExecStart=/usr/bin/node /opt/schedule-api/server.js
           Restart=always
           RestartSec=10
           StandardOutput=journal
           StandardError=journal
-          SyslogIdentifier=ncaa-api
+          SyslogIdentifier=schedule-api
 
           [Install]
           WantedBy=multi-user.target
           SERVICE
 
           systemctl daemon-reload
-          systemctl enable ncaa-api
-          systemctl start ncaa-api
+          systemctl enable schedule-api
+          systemctl start schedule-api
 
           echo "UserData complete"
 
@@ -290,7 +290,7 @@ Resources:
       InstanceId: !Ref ApiInstance
       Tags:
         - Key: Name
-          Value: !Sub ncaa-marketplace-api-${Environment}
+          Value: !Sub schedule-marketplace-api-${Environment}
 
   # ---------------------------------------------------------------------------
   # SSM Parameters
@@ -298,14 +298,14 @@ Resources:
   ParamInstanceId:
     Type: AWS::SSM::Parameter
     Properties:
-      Name: !Sub /ncaa-marketplace/${Environment}/api-instance-id
+      Name: !Sub /schedule-marketplace/${Environment}/api-instance-id
       Type: String
       Value: !Ref ApiInstance
 
   ParamApiIp:
     Type: AWS::SSM::Parameter
     Properties:
-      Name: !Sub /ncaa-marketplace/${Environment}/api-ip
+      Name: !Sub /schedule-marketplace/${Environment}/api-ip
       Type: String
       Value: !Ref ElasticIP
 

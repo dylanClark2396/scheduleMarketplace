@@ -1,7 +1,7 @@
 {
   "name": "schedule-marketplace-backend",
   "version": "1.0.0",
-  "description": "NCAA Basketball Schedule Marketplace API",
+  "description": "Schedule Marketplace API",
   "main": "index.ts",
   "type": "module",
   "scripts": {

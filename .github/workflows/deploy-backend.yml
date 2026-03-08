@@ -63,13 +63,13 @@ jobs:
         id: ssm
         run: |
           API_FN=$(aws ssm get-parameter \
-            --name /ncaa-marketplace/$ENV/api-function-name \
+            --name /schedule-marketplace/$ENV/api-function-name \
             --query Parameter.Value --output text)
           IMPORT_FN=$(aws ssm get-parameter \
-            --name /ncaa-marketplace/$ENV/import-processor-function-name \
+            --name /schedule-marketplace/$ENV/import-processor-function-name \
             --query Parameter.Value --output text)
           DEPLOY_BUCKET=$(aws ssm get-parameter \
-            --name /ncaa-marketplace/$ENV/deploy-bucket \
+            --name /schedule-marketplace/$ENV/deploy-bucket \
             --query Parameter.Value --output text)
           echo "api_fn=$API_FN" >> $GITHUB_OUTPUT
           echo "import_fn=$IMPORT_FN" >> $GITHUB_OUTPUT
@@ -116,7 +116,7 @@ jobs:
       - name: Health check
         run: |
           API_URL=$(aws ssm get-parameter \
-            --name /ncaa-marketplace/$ENV/api-url \
+            --name /schedule-marketplace/$ENV/api-url \
             --query Parameter.Value --output text)
 
           echo "Checking $API_URL/health"

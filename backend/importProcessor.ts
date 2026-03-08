@@ -10,7 +10,7 @@ import type { ImportJob, Game, GameLocation, ImportStatus } from './types.js'
 
 const REGION = process.env.AWS_REGION ?? 'us-east-2'
 const IMPORT_BUCKET = process.env.S3_IMPORT_BUCKET ?? ''
-const IMPORT_JOBS_TABLE = process.env.IMPORT_JOBS_TABLE ?? 'ncaa_import_jobs'
+const IMPORT_JOBS_TABLE = process.env.IMPORT_JOBS_TABLE ?? 'import_jobs'
 
 const dynamo = DynamoDBDocumentClient.from(new DynamoDBClient({ region: REGION }))
 const s3 = new S3Client({ region: REGION })

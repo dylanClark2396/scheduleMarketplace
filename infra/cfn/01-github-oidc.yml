@@ -18,31 +18,25 @@ Parameters:
 Resources:
 
   # ---------------------------------------------------------------------------
-  # OIDC Provider — allows GitHub Actions to assume IAM roles without long-lived keys
-  # ---------------------------------------------------------------------------
-  GitHubOIDCProvider:
-    Type: AWS::IAM::OIDCProvider
-    Properties:
-      Url: https://token.actions.githubusercontent.com
-      ClientIdList:
-        - sts.amazonaws.com
-      ThumbprintList:
-        - 6938fd4d98bab03faadb97b34396831e3780aea1
-        - 1c58a3a8518e8759bf075b76b750d4f2df264fcd
-
-  # ---------------------------------------------------------------------------
   # IAM Role assumed by GitHub Actions workflows
+  # Note: The GitHub OIDC provider (token.actions.githubusercontent.com) must
+  # already exist in this account — only one is allowed per account. If it
+  # doesn't exist yet, create it manually once:
+  #   aws iam create-open-id-connect-provider \
+  #     --url https://token.actions.githubusercontent.com \
+  #     --client-id-list sts.amazonaws.com \
+  #     --thumbprint-list 6938fd4d98bab03faadb97b34396831e3780aea1
   # ---------------------------------------------------------------------------
   GitHubActionsRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub ncaa-marketplace-github-${Environment}
+      RoleName: !Sub schedule-marketplace-github-${Environment}
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
           - Effect: Allow
             Principal:
-              Federated: !GetAtt GitHubOIDCProvider.Arn
+              Federated: !Sub arn:aws:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com
             Action: sts:AssumeRoleWithWebIdentity
             Condition:
               StringEquals:
@@ -56,7 +50,7 @@ Resources:
   DeployPolicy:
     Type: AWS::IAM::ManagedPolicy
     Properties:
-      ManagedPolicyName: !Sub ncaa-marketplace-deploy-${Environment}
+      ManagedPolicyName: !Sub schedule-marketplace-deploy-${Environment}
       PolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -226,7 +220,7 @@ Resources:
   RoleArnParam:
     Type: AWS::SSM::Parameter
     Properties:
-      Name: !Sub /ncaa-marketplace/${Environment}/github-actions-role-arn
+      Name: !Sub /schedule-marketplace/${Environment}/github-actions-role-arn
       Type: String
       Value: !GetAtt GitHubActionsRole.Arn
 
@@ -235,4 +229,4 @@ Outputs:
     Description: Paste this into GitHub secret AWS_DEPLOY_ROLE
     Value: !GetAtt GitHubActionsRole.Arn
     Export:
-      Name: !Sub ncaa-marketplace-github-role-${Environment}
+      Name: !Sub schedule-marketplace-github-role-${Environment}

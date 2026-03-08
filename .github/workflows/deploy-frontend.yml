@@ -70,10 +70,10 @@ jobs:
         id: ssm
         run: |
           FRONTEND_BUCKET=$(aws ssm get-parameter \
-            --name /ncaa-marketplace/$ENV/frontend-bucket \
+            --name /schedule-marketplace/$ENV/frontend-bucket \
             --query Parameter.Value --output text)
           CF_DIST_ID=$(aws ssm get-parameter \
-            --name /ncaa-marketplace/$ENV/cloudfront-distribution-id \
+            --name /schedule-marketplace/$ENV/cloudfront-distribution-id \
             --query Parameter.Value --output text)
           echo "frontend_bucket=$FRONTEND_BUCKET" >> $GITHUB_OUTPUT
           echo "cf_dist_id=$CF_DIST_ID" >> $GITHUB_OUTPUT
@@ -112,6 +112,6 @@ jobs:
       - name: Print frontend URL
         run: |
           CF_DOMAIN=$(aws ssm get-parameter \
-            --name /ncaa-marketplace/$ENV/cloudfront-domain \
+            --name /schedule-marketplace/$ENV/cloudfront-domain \
             --query Parameter.Value --output text)
           echo "Frontend deployed: https://$CF_DOMAIN"

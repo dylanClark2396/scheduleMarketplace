@@ -1,4 +1,4 @@
-name: Run NCAA Scraper
+name: Run Scraper
 
 on:
   # Run every Monday at 06:00 UTC (start of week, fresh data)
@@ -32,7 +32,7 @@ permissions:
 
 jobs:
   scrape:
-    name: Scrape NCAA data
+    name: Scrape data
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment || 'prod' }}
 
@@ -64,7 +64,7 @@ jobs:
         id: ssm
         run: |
           SCRAPER_BUCKET=$(aws ssm get-parameter \
-            --name /ncaa-marketplace/$ENV/scraper-bucket \
+            --name /schedule-marketplace/$ENV/scraper-bucket \
             --query Parameter.Value --output text)
           echo "scraper_bucket=$SCRAPER_BUCKET" >> $GITHUB_OUTPUT
 
@@ -80,7 +80,7 @@ jobs:
           fi
 
           echo "Running scraper: target=$TARGET upload=$UPLOAD_FLAG"
-          python ncaa_scraper.py --target "$TARGET" $UPLOAD_FLAG
+          python scraper.py --target "$TARGET" $UPLOAD_FLAG
 
       - name: Show output summary
         working-directory: scraper
@@ -97,10 +97,10 @@ jobs:
         if: inputs.upload_s3 != 'false'
         run: |
           API_IP=$(aws ssm get-parameter \
-            --name /ncaa-marketplace/$ENV/api-ip \
+            --name /schedule-marketplace/$ENV/api-ip \
             --query Parameter.Value --output text)
           INSTANCE_ID=$(aws ssm get-parameter \
-            --name /ncaa-marketplace/$ENV/api-instance-id \
+            --name /schedule-marketplace/$ENV/api-instance-id \
             --query Parameter.Value --output text)
 
           # Call /admin/sync on the running backend via SSM (no public HTTP needed)

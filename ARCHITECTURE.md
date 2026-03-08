@@ -1,6 +1,6 @@
 # Architecture
 
-NCAA Basketball Scheduling Marketplace — a web platform where D1 programs can manage
+Basketball Scheduling Marketplace — a web platform where D1 programs can manage
 their schedules, analyze strength of schedule (SOS), and trade open game slots with
 other programs through a marketplace.
 
@@ -56,7 +56,7 @@ other programs through a marketplace.
 
   ┌──────────────────────────────────────────────────────────────────────────────┐
   │   Python Scraper (scheduled via GitHub Actions — runs weekly)                │
-  │   NCAA stats site → teams.json / rankings.json → S3 scraper bucket          │
+  │   Stats site → teams.json / rankings.json → S3 scraper bucket               │
   │   Backend /admin/sync reads from S3 and upserts into DynamoDB                │
   └──────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -85,7 +85,7 @@ scheduleMarketplace/
 │   └── server.js              Express API (single file, all routes)
 │
 ├── scraper/
-│   └── ncaa_scraper.py        NCAA stats + NET rankings scraper
+│   └── scraper.py             D1 stats + NET rankings scraper
 │
 ├── infra/
 │   ├── cfn/                   CloudFormation templates (01–05)
@@ -217,14 +217,14 @@ When a `POST /import` request arrives:
 
 **Stack:** Python 3.12 · requests · BeautifulSoup · boto3
 
-`scraper/ncaa_scraper.py` scrapes public NCAA stats pages to populate the
+`scraper/scraper.py` scrapes public D1 stats pages to populate the
 teams database. It runs on a schedule (via GitHub Actions) and is the source
 of truth for NET rankings and team stats.
 
 ### Pipeline
 
 ```
-NCAA stats site (ncaa.com/stats/basketball-men)
+Stats site (ncaa.com/stats/basketball-men)
         │
         ▼
 scrape_teams()     → base team list (id, name, conference, division)
@@ -240,7 +240,7 @@ merge into teams_by_id dict
 output/teams.json + output/rankings.json
         │
         ▼  (--upload-s3 flag)
-S3 scraper bucket  →  backend /admin/sync  →  DynamoDB ncaa_teams
+S3 scraper bucket  →  backend /admin/sync  →  DynamoDB teams
 ```
 
 ### Rate limiting
@@ -259,7 +259,7 @@ Defined in `frontend/src/models.ts` and mirrored structurally in `backend/server
 
 ```typescript
 Team {
-  id: string                  // NCAA school slug (e.g. "duke-blue-devils")
+  id: string                  // school slug (e.g. "duke-blue-devils")
   name: string                // "Duke Blue Devils"
   shortName: string           // "Duke"
   conference: string          // "ACC"
@@ -354,7 +354,7 @@ ImportJob {
 
 ## SOS & NET Calculation
 
-The NCAA NET (Nitty Gritty Efficiency Tool) ranking drives all SOS logic.
+The NET (Nitty Gritty Efficiency Tool) ranking drives all SOS logic.
 NET ranks all 363 D1 teams 1–363 where **1 is the best team**.
 
 ### Strength of Schedule formula
@@ -398,7 +398,7 @@ location. The thresholds are:
 | Home     | 1–75   | 76–135  | 136–240  | 241+  |
 
 Q1 wins are the most valuable. Q4 losses are the most damaging.
-The NCAA selection committee uses the Q1–Q4 breakdown extensively when
+The selection committee uses the Q1–Q4 breakdown extensively when
 evaluating tournament bids.
 
 ### SOS target suggestion algorithm
@@ -524,18 +524,18 @@ CloudFront CreateInvalidation /* → wait for completion
 
 **Scraper** (runs every Monday 06:00 UTC or manual dispatch):
 ```
-python ncaa_scraper.py --target all --upload-s3
-  → scrapes NCAA stats site (1.5s/request, 3 retries)
+python scraper.py --target all --upload-s3
+  → scrapes stats site (1.5s/request, 3 retries)
   → writes output/teams.json + output/rankings.json
   → uploads to S3 scraper bucket
 SSM RunCommand → POST /admin/sync on EC2
-  → reads teams.json from S3 → upserts into ncaa_teams DynamoDB table
+  → reads teams.json from S3 → upserts into teams DynamoDB table
 ```
 
 ### IAM boundaries
 
 - **GitHub Actions role** — OIDC only (no keys), constrained to deploy operations
-- **Lambda execution role** — scoped to `ncaa_*` DynamoDB tables and specific S3 bucket ARNs; Textract and `lambda:InvokeFunction` on the import processor only; no wildcard resource access on sensitive services
+- **Lambda execution role** — scoped to project DynamoDB tables and specific S3 bucket ARNs; Textract and `lambda:InvokeFunction` on the import processor only; no wildcard resource access on sensitive services
 - **No servers to manage** — no EC2, no security groups, no OS patches, no SSH
 
 ### Required GitHub Secrets
@@ -595,7 +595,7 @@ A complete example: **user adds a game to their schedule from the SOS Estimator*
 
 ```
 1. User picks team, loads schedule  →  GET /schedules?teamId=X&season=2025-26
-   └─ DynamoDB Scan(ncaa_schedules, filter: teamId + owner_id)
+   └─ DynamoDB Scan(schedules, filter: teamId + owner_id)
 
 2. User clicks "Get Suggestions"
    └─ suggestTeamsForTarget() runs entirely in the browser

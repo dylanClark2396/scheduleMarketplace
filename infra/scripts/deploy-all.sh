@@ -3,36 +3,67 @@
 #
 # Prerequisites:
 #   - AWS CLI configured with admin credentials
-#   - Set GITHUB_ORG, GITHUB_REPO, APP_DOMAIN, COGNITO_DOMAIN_PREFIX env vars
 #
 # Usage:
-#   export GITHUB_ORG=myorg
-#   export GITHUB_REPO=scheduleMarketplace
-#   export APP_DOMAIN=https://schedulemarketplace.com   # or http://localhost:5173 for dev
-#   export COGNITO_DOMAIN_PREFIX=ncaa-schedule-marketplace
-#   export AWS_REGION=us-east-2
-#   export ENVIRONMENT=prod
-#
-#   chmod +x infra/scripts/deploy-all.sh
-#   ./infra/scripts/deploy-all.sh
+#   ./infra/scripts/deploy-all.sh \
+#     --org myorg \
+#     --repo scheduleMarketplace \
+#     [--domain http://localhost:5173] \
+#     [--cognito-prefix schedule-marketplace] \
+#     [--region us-east-1] \
+#     [--env prod]
 
 set -euo pipefail
 
-REGION="${AWS_REGION:-us-east-2}"
-ENV="${ENVIRONMENT:-prod}"
-STACK_PREFIX="ncaa-marketplace"
-CFN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../cfn" && pwd)"
+export MSYS_NO_PATHCONV=1  # prevent Git Bash on Windows from converting /paths to C:/...
 
-: "${GITHUB_ORG:?Set GITHUB_ORG}"
-: "${GITHUB_REPO:?Set GITHUB_REPO}"
-: "${APP_DOMAIN:=http://localhost:5173}"
-: "${COGNITO_DOMAIN_PREFIX:=ncaa-schedule-marketplace}"
+# -------------------------
+# Argument parsing
+# -------------------------
+REGION="us-east-1"
+ENV="prod"
+APP_DOMAIN="http://localhost:5173"
+COGNITO_DOMAIN_PREFIX="schedule-marketplace"
+GITHUB_ORG=""
+GITHUB_REPO=""
+
+usage() {
+  echo "Usage: $0 --org <github-org> --repo <github-repo> [options]"
+  echo ""
+  echo "Required:"
+  echo "  --org    <org>     GitHub org or username"
+  echo "  --repo   <repo>    GitHub repository name"
+  echo ""
+  echo "Optional:"
+  echo "  --domain  <url>    App domain (default: http://localhost:5173)"
+  echo "  --cognito-prefix   Cognito hosted UI prefix (default: schedule-marketplace)"
+  echo "  --region  <region> AWS region (default: us-east-1)"
+  echo "  --env     <env>    Environment: prod|dev (default: prod)"
+  exit 1
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --org)            GITHUB_ORG="$2";            shift 2 ;;
+    --repo)           GITHUB_REPO="$2";           shift 2 ;;
+    --domain)         APP_DOMAIN="$2";            shift 2 ;;
+    --cognito-prefix) COGNITO_DOMAIN_PREFIX="$2"; shift 2 ;;
+    --region)         REGION="$2";               shift 2 ;;
+    --env)            ENV="$2";                  shift 2 ;;
+    *) echo "Unknown option: $1"; usage ;;
+  esac
+done
+
+[[ -z "$GITHUB_ORG" || -z "$GITHUB_REPO" ]] && usage
+
+STACK_PREFIX="schedule-marketplace"
+CFN_DIR="$(cygpath -w "$(cd "$(dirname "${BASH_SOURCE[0]}")/../cfn" && pwd)")"
 
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
-log() { echo -e "${GREEN}[deploy-all]${NC} $*"; }
+log()  { echo -e "${GREEN}[deploy-all]${NC} $*"; }
 warn() { echo -e "${YELLOW}[warn]${NC} $*"; }
 
 deploy_stack() {
@@ -73,7 +104,6 @@ ROLE_ARN=$(aws cloudformation describe-stacks \
   --output text)
 
 log "GitHub Actions Role ARN: ${ROLE_ARN}"
-warn "Add this as GitHub secret AWS_DEPLOY_ROLE: ${ROLE_ARN}"
 
 # -------------------------
 # 2. Storage (DynamoDB + S3)
@@ -84,14 +114,6 @@ deploy_stack \
   "${CFN_DIR}/02-storage.yml" \
   --parameter-overrides \
     "Environment=${ENV}"
-
-DEPLOY_BUCKET=$(aws ssm get-parameter \
-  --region "$REGION" \
-  --name "/ncaa-marketplace/${ENV}/deploy-bucket" \
-  --query Parameter.Value --output text)
-
-log "Deploy bucket: ${DEPLOY_BUCKET}"
-warn "Add this as GitHub secret DEPLOY_BUCKET: ${DEPLOY_BUCKET}"
 
 # -------------------------
 # 3. Cognito
@@ -105,20 +127,6 @@ deploy_stack \
     "AppDomain=${APP_DOMAIN}" \
     "CognitoDomainPrefix=${COGNITO_DOMAIN_PREFIX}"
 
-COGNITO_DOMAIN=$(aws ssm get-parameter \
-  --region "$REGION" \
-  --name "/ncaa-marketplace/${ENV}/cognito-domain" \
-  --query Parameter.Value --output text)
-
-COGNITO_CLIENT_ID=$(aws ssm get-parameter \
-  --region "$REGION" \
-  --name "/ncaa-marketplace/${ENV}/cognito-client-id" \
-  --query Parameter.Value --output text)
-
-log "Cognito domain: ${COGNITO_DOMAIN}"
-warn "Add GitHub secret VITE_COGNITO_DOMAIN: ${COGNITO_DOMAIN}"
-warn "Add GitHub secret VITE_COGNITO_CLIENT_ID: ${COGNITO_CLIENT_ID}"
-
 # -------------------------
 # 4. Lambda + API Gateway
 # -------------------------
@@ -128,23 +136,15 @@ deploy_stack \
   "${CFN_DIR}/04-lambda.yml" \
   --parameter-overrides \
     "Environment=${ENV}" \
-    "DeployBucket=/ncaa-marketplace/${ENV}/deploy-bucket" \
-    "TeamsTable=/ncaa-marketplace/${ENV}/teams-table" \
-    "SchedulesTable=/ncaa-marketplace/${ENV}/schedules-table" \
-    "MarketplaceTable=/ncaa-marketplace/${ENV}/marketplace-table" \
-    "ImportJobsTable=/ncaa-marketplace/${ENV}/import-jobs-table" \
-    "ImportBucket=/ncaa-marketplace/${ENV}/import-bucket" \
-    "ScraperBucket=/ncaa-marketplace/${ENV}/scraper-bucket" \
-    "CognitoUserPoolId=/ncaa-marketplace/${ENV}/cognito-user-pool-id" \
-    "CognitoClientId=/ncaa-marketplace/${ENV}/cognito-client-id"
-
-API_URL=$(aws ssm get-parameter \
-  --region "$REGION" \
-  --name "/ncaa-marketplace/${ENV}/api-url" \
-  --query Parameter.Value --output text)
-
-log "API Gateway URL: ${API_URL}"
-warn "Add GitHub secret VITE_API_BASE: ${API_URL}"
+    "DeployBucket=/schedule-marketplace/${ENV}/deploy-bucket" \
+    "TeamsTable=/schedule-marketplace/${ENV}/teams-table" \
+    "SchedulesTable=/schedule-marketplace/${ENV}/schedules-table" \
+    "MarketplaceTable=/schedule-marketplace/${ENV}/marketplace-table" \
+    "ImportJobsTable=/schedule-marketplace/${ENV}/import-jobs-table" \
+    "ImportBucket=/schedule-marketplace/${ENV}/import-bucket" \
+    "ScraperBucket=/schedule-marketplace/${ENV}/scraper-bucket" \
+    "CognitoUserPoolId=/schedule-marketplace/${ENV}/cognito-user-pool-id" \
+    "CognitoClientId=/schedule-marketplace/${ENV}/cognito-client-id"
 
 # -------------------------
 # 5. CDN (CloudFront)
@@ -155,36 +155,35 @@ deploy_stack \
   "${CFN_DIR}/05-cdn.yml" \
   --parameter-overrides \
     "Environment=${ENV}" \
-    "FrontendBucketName=/ncaa-marketplace/${ENV}/frontend-bucket"
-
-CF_DIST_ID=$(aws ssm get-parameter \
-  --region "$REGION" \
-  --name "/ncaa-marketplace/${ENV}/cloudfront-distribution-id" \
-  --query Parameter.Value --output text)
-
-CF_DOMAIN=$(aws ssm get-parameter \
-  --region "$REGION" \
-  --name "/ncaa-marketplace/${ENV}/cloudfront-domain" \
-  --query Parameter.Value --output text)
-
-log "CloudFront distribution: ${CF_DIST_ID}"
-log "Frontend URL: https://${CF_DOMAIN}"
-warn "Add GitHub secret CLOUDFRONT_DISTRIBUTION_ID: ${CF_DIST_ID}"
+    "FrontendBucketName=/schedule-marketplace/${ENV}/frontend-bucket"
 
 # -------------------------
-# Summary
+# Summary — read outputs from SSM
 # -------------------------
+get_param() {
+  aws ssm get-parameter --region "$REGION" --name "/schedule-marketplace/${ENV}/$1" \
+    --query Parameter.Value --output text 2>/dev/null || echo "(not found)"
+}
+
+DEPLOY_BUCKET=$(get_param deploy-bucket)
+COGNITO_DOMAIN=$(get_param cognito-domain)
+COGNITO_CLIENT_ID=$(get_param cognito-client-id)
+API_URL=$(get_param api-url)
+CF_DIST_ID=$(get_param cloudfront-distribution-id)
+CF_DOMAIN=$(get_param cloudfront-domain)
+
 echo ""
 log "=== All stacks deployed successfully! ==="
 echo ""
 echo "Required GitHub Secrets:"
 echo "  AWS_DEPLOY_ROLE             = ${ROLE_ARN}"
 echo "  AWS_REGION                  = ${REGION}"
-echo "  DEPLOY_BUCKET               = ${DEPLOY_BUCKET}"
-echo "  CLOUDFRONT_DISTRIBUTION_ID  = ${CF_DIST_ID}"
 echo "  VITE_API_BASE               = ${API_URL}"
 echo "  VITE_COGNITO_DOMAIN         = ${COGNITO_DOMAIN}"
 echo "  VITE_COGNITO_CLIENT_ID      = ${COGNITO_CLIENT_ID}"
+echo "  VITE_REDIRECT_URI           = ${APP_DOMAIN}/callback"
 echo ""
 echo "Frontend: https://${CF_DOMAIN}"
 echo "API:      ${API_URL}/health"
+echo "CF Dist:  ${CF_DIST_ID}"
+echo "S3 Deploy Bucket: ${DEPLOY_BUCKET}"

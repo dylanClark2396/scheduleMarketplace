@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: >
-  CloudFront distribution and S3 bucket policy for the NCAA Schedule
+  CloudFront distribution and S3 bucket policy for the Schedule
   Marketplace frontend. Uses Origin Access Control (OAC) so S3 stays private.
 
 Parameters:
@@ -12,7 +12,7 @@ Parameters:
   # Read from SSM — set by 02-storage stack
   FrontendBucketName:
     Type: AWS::SSM::Parameter::Value<String>
-    Default: /ncaa-marketplace/prod/frontend-bucket
+    Default: /schedule-marketplace/prod/frontend-bucket
 
   # Optional custom domain — leave blank to use the CloudFront *.cloudfront.net domain
   CustomDomain:
@@ -38,7 +38,7 @@ Resources:
     Type: AWS::CloudFront::OriginAccessControl
     Properties:
       OriginAccessControlConfig:
-        Name: !Sub ncaa-marketplace-oac-${Environment}
+        Name: !Sub schedule-marketplace-oac-${Environment}
         OriginAccessControlOriginType: s3
         SigningBehavior: always
         SigningProtocol: sigv4
@@ -71,12 +71,12 @@ Resources:
     Properties:
       Tags:
         - Key: Project
-          Value: ncaa-marketplace
+          Value: schedule-marketplace
         - Key: Environment
           Value: !Ref Environment
       DistributionConfig:
         Enabled: true
-        Comment: !Sub NCAA Schedule Marketplace frontend (${Environment})
+        Comment: !Sub Schedule Marketplace frontend (${Environment})
         HttpVersion: http2and3
         PriceClass: PriceClass_100     # US, Canada, Europe — cheapest
 
@@ -142,14 +142,14 @@ Resources:
   ParamDistributionId:
     Type: AWS::SSM::Parameter
     Properties:
-      Name: !Sub /ncaa-marketplace/${Environment}/cloudfront-distribution-id
+      Name: !Sub /schedule-marketplace/${Environment}/cloudfront-distribution-id
       Type: String
       Value: !Ref Distribution
 
   ParamDistributionDomain:
     Type: AWS::SSM::Parameter
     Properties:
-      Name: !Sub /ncaa-marketplace/${Environment}/cloudfront-domain
+      Name: !Sub /schedule-marketplace/${Environment}/cloudfront-domain
       Type: String
       Value: !GetAtt Distribution.DomainName
 

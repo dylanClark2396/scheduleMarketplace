@@ -78,10 +78,10 @@ const s3 = new S3Client({
 const lambda = new LambdaClient({ region: REGION })
 
 const TABLES = {
-  teams:       process.env.TEAMS_TABLE       ?? 'ncaa_teams',
-  schedules:   process.env.SCHEDULES_TABLE   ?? 'ncaa_schedules',
-  marketplace: process.env.MARKETPLACE_TABLE ?? 'ncaa_marketplace',
-  importJobs:  process.env.IMPORT_JOBS_TABLE ?? 'ncaa_import_jobs',
+  teams:       process.env.TEAMS_TABLE       ?? 'teams',
+  schedules:   process.env.SCHEDULES_TABLE   ?? 'schedules',
+  marketplace: process.env.MARKETPLACE_TABLE ?? 'marketplace',
+  importJobs:  process.env.IMPORT_JOBS_TABLE ?? 'import_jobs',
 } as const
 
 const IMPORT_BUCKET = process.env.S3_IMPORT_BUCKET ?? ''

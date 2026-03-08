@@ -6,7 +6,7 @@
           <i class="pi pi-chart-bar" style="font-size: 3rem; color: var(--p-primary-color)" />
         </div>
       </template>
-      <template #title>NCAA Schedule Marketplace</template>
+      <template #title>Schedule Marketplace</template>
       <template #subtitle>Sign in to manage your program's schedule</template>
       <template #content>
         <Button

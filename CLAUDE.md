@@ -4,12 +4,12 @@ This file provides guidance to Claude Code when working with code in this reposi
 
 ## Overview
 
-NCAA Basketball Scheduling Marketplace — a platform for D1 programs to manage schedules, estimate strength of schedule (SOS), and trade open schedule slots.
+Basketball Scheduling Marketplace — a platform for D1 programs to manage schedules, estimate strength of schedule (SOS), and trade open schedule slots.
 
 Sub-projects:
 - `frontend/` — Vue 3 + TypeScript SPA (PrimeVue 4, Vite, pnpm)
 - `backend/` — Node.js Express REST API (AWS DynamoDB, S3, Cognito)
-- `scraper/` — Python data pipeline for NCAA D1 stats and NET rankings
+- `scraper/` — Python data pipeline for D1 stats and NET rankings
 
 Package manager is **pnpm** for both frontend and backend.
 
@@ -33,10 +33,10 @@ pnpm build  # esbuild bundle → dist/server.js
 ```bash
 python -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
-python ncaa_scraper.py --target teams       # scrape D1 team list
-python ncaa_scraper.py --target rankings    # scrape NET rankings
-python ncaa_scraper.py --target stats       # scrape team stats
-python ncaa_scraper.py --target all         # run full pipeline
+python scraper.py --target teams       # scrape D1 team list
+python scraper.py --target rankings    # scrape NET rankings
+python scraper.py --target stats       # scrape team stats
+python scraper.py --target all         # run full pipeline
 ```
 
 ## Architecture
@@ -72,10 +72,10 @@ ImportJob { id, teamId, source(pdf|csv|excel|photo|manual), status, parsedGames[
 4. Return top suggestions
 
 ### Backend — DynamoDB tables
-- `ncaa_teams` — partition key: `id`
-- `ncaa_schedules` — partition key: `id`, GSI: `teamId-season-index`
-- `ncaa_marketplace` — partition key: `id`, GSI: `status-createdAt-index`
-- `ncaa_import_jobs` — partition key: `id`
+- `teams` — partition key: `id`
+- `schedules` — partition key: `id`, GSI: `teamId-season-index`
+- `marketplace` — partition key: `id`, GSI: `status-createdAt-index`
+- `import_jobs` — partition key: `id`
 
 ### Frontend key files
 - `src/apiRoutes.ts` — all API endpoint URLs (reads `VITE_API_BASE` env var)
@@ -89,6 +89,6 @@ PrimeVue components are **auto-imported** via `unplugin-vue-components` + `Prime
 
 ### Scraper strategy
 - Primary source: `https://www.ncaa.com/stats/basketball-men` for D1 stats
-- NET rankings: scraped from NCAA or ESPN — stored in `scraper/output/`
+- NET rankings: scraped from ncaa.com or ESPN — stored in `scraper/output/`
 - Scraper outputs JSON files that are loaded into DynamoDB by the backend on startup or via `/admin/sync` endpoint
 - Rate limiting: 1 request/second, respectful of robots.txt
