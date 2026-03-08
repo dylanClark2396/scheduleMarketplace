@@ -71,6 +71,7 @@ Resources:
               - cloudformation:DescribeChangeSet
               - cloudformation:ExecuteChangeSet
               - cloudformation:DeleteChangeSet
+              - cloudformation:GetTemplateSummary
             Resource:
               - !Sub arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/schedule-marketplace-*/*
 
