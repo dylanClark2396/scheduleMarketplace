@@ -179,6 +179,10 @@ onMounted(async () => {
   font-weight: 600;
 }
 
+:deep(.p-card) {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12), 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
