@@ -330,7 +330,7 @@ const newGame = ref<Partial<Game>>({
 
 const newGameDate = computed<Date | null>({
   get: () => newGame.value.date ? new Date(newGame.value.date + 'T00:00:00') : null,
-  set: (d) => { newGame.value.date = d ? d.toISOString().split('T')[0] : undefined },
+  set: (d) => { newGame.value.date = d ? d.toISOString().slice(0, 10) : undefined },
 })
 
 onMounted(async () => {

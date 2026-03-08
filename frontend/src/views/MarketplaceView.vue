@@ -215,7 +215,7 @@ const form = ref<Partial<MarketplaceListing>>({
 
 const formDate = computed<Date | null>({
   get: () => form.value.date ? new Date(form.value.date + 'T00:00:00') : null,
-  set: (d) => { form.value.date = d ? d.toISOString().split('T')[0] : undefined },
+  set: (d) => { form.value.date = d ? d.toISOString().slice(0, 10) : undefined },
 })
 
 function onFormTeamSelect(t: Team) {

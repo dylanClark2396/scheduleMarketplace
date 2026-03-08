@@ -176,7 +176,7 @@ const parsedGames = ref<Partial<Game>[]>([])
 const parseErrors = ref<string[]>([])
 
 const manualTeamId = ref<string | null>(null)
-const manualSeason = ref(SEASONS[1])
+const manualSeason = ref<string>(SEASONS[1] ?? '')
 const manualGames = ref<Array<{ date: Date | null; opponentName: string; location: string; isConference: boolean }>>([])
 
 onMounted(async () => {
@@ -271,7 +271,7 @@ async function saveManual() {
     season: manualSeason.value,
     games: manualGames.value.map((g, i) => ({
       id: String(i),
-      date: g.date ? g.date.toISOString().split('T')[0] : '',
+      date: g.date ? g.date.toISOString().slice(0, 10) : '',
       opponentId: '',
       opponentName: g.opponentName,
       opponentNetRanking: null,

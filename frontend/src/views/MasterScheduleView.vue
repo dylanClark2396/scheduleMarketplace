@@ -126,7 +126,7 @@ const schedules = ref<TeamSchedule[]>([])
 const loading = ref(false)
 
 const filterConference = ref('All')
-const filterSeason = ref(SEASONS[1])
+const filterSeason = ref<string>(SEASONS[1] ?? '')
 const searchQuery = ref('')
 
 const filteredSchedules = computed(() => {
