@@ -229,22 +229,6 @@ Resources:
       Principal: s3.amazonaws.com
       SourceArn: !Sub arn:aws:s3:::${ScraperBucket}
 
-  ScraperBucketNotification:
-    Type: AWS::S3::BucketNotification
-    DependsOn: ScraperSyncS3Permission
-    Properties:
-      Bucket: !Ref ScraperBucket
-      LambdaConfigurations:
-        - Event: s3:ObjectCreated:*
-          Filter:
-            S3Key:
-              Rules:
-                - Name: prefix
-                  Value: scraper/
-                - Name: suffix
-                  Value: teams.json
-          Function: !GetAtt ScraperSyncFunction.Arn
-
   # ---------------------------------------------------------------------------
   # API Gateway HTTP API — cheaper and simpler than REST API
   # ---------------------------------------------------------------------------

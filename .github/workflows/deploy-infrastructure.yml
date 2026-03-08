@@ -95,6 +95,39 @@ jobs:
             --no-fail-on-empty-changeset
 
       # -----------------------------------------------------------------------
+      # 04b — Wire S3 → scraper-sync Lambda notification
+      # (can't do this in CFN when bucket is in a different stack)
+      # -----------------------------------------------------------------------
+      - name: Wire S3 scraper-sync notification
+        if: inputs.stacks == 'all' || contains(inputs.stacks, '04') || contains(inputs.stacks, 'lambda')
+        run: |
+          SCRAPER_BUCKET=$(aws ssm get-parameter \
+            --name /schedule-marketplace/$ENV/scraper-bucket \
+            --query Parameter.Value --output text)
+          SYNC_FN_ARN=$(aws lambda get-function-configuration \
+            --function-name schedule-marketplace-scraper-sync-$ENV \
+            --query FunctionArn --output text)
+
+          aws s3api put-bucket-notification-configuration \
+            --bucket "$SCRAPER_BUCKET" \
+            --notification-configuration "{
+              \"LambdaFunctionConfigurations\": [{
+                \"LambdaFunctionArn\": \"$SYNC_FN_ARN\",
+                \"Events\": [\"s3:ObjectCreated:*\"],
+                \"Filter\": {
+                  \"Key\": {
+                    \"FilterRules\": [
+                      {\"Name\": \"prefix\", \"Value\": \"scraper/\"},
+                      {\"Name\": \"suffix\", \"Value\": \"teams.json\"}
+                    ]
+                  }
+                }
+              }]
+            }"
+
+          echo "S3 notification configured: s3://$SCRAPER_BUCKET/scraper/teams.json → $SYNC_FN_ARN"
+
+      # -----------------------------------------------------------------------
       # 05 — CDN
       # -----------------------------------------------------------------------
       - name: Deploy 05-cdn
