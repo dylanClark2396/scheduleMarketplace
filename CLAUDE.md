@@ -33,9 +33,9 @@ pnpm build  # esbuild bundle → dist/server.js
 ```bash
 python -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
-python scraper.py --target teams       # scrape D1 team list
-python scraper.py --target rankings    # scrape NET rankings
-python scraper.py --target stats       # scrape team stats
+python scraper.py --target teams       # ESPN bulk D1 team list
+python scraper.py --target rankings    # ncaa.com NET rankings
+python scraper.py --target stats       # ESPN per-team records/PPG
 python scraper.py --target all         # run full pipeline
 ```
 

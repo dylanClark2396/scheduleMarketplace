@@ -2,8 +2,8 @@
 D1 Men's Basketball Data Scraper
 
 Sources:
-  - https://www.ncaa.com/stats/basketball-men  (team stats)
-  - NET rankings page (when available)
+  - ESPN unofficial API (teams, records, stats)
+  - https://www.ncaa.com/rankings/basketball-men/d1 (NET rankings)
 
 Usage:
   python scraper.py --target teams
@@ -11,7 +11,7 @@ Usage:
   python scraper.py --target stats
   python scraper.py --target all
 
-Output: scraper/output/{teams,rankings,stats}.json
+Output: scraper/output/{teams,rankings}.json
         (also optionally uploaded to S3)
 """
 
@@ -32,34 +32,57 @@ load_dotenv()
 OUTPUT_DIR = Path(__file__).parent / "output"
 OUTPUT_DIR.mkdir(exist_ok=True)
 
-BASE_URL = "https://www.ncaa.com"
-STATS_BASE = f"{BASE_URL}/stats/basketball-men"
-
-# Polite scraping delay (seconds between requests)
-REQUEST_DELAY = 1.5
+# Polite delay between requests (seconds)
+REQUEST_DELAY = 0.4
 
 HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (compatible; ScheduleMarketplaceScraper/1.0; "
         "+https://github.com/example/schedule-marketplace)"
     ),
-    "Accept": "text/html,application/xhtml+xml",
+    "Accept": "application/json,text/html,*/*",
     "Accept-Language": "en-US,en;q=0.9",
 }
 
 SESSION = requests.Session()
 SESSION.headers.update(HEADERS)
 
+# ESPN API — mens college basketball group 50 = D1
+ESPN_TEAMS_URL = (
+    "https://site.api.espn.com/apis/site/v2/sports/basketball/"
+    "mens-college-basketball/teams?limit=500&groups=50"
+)
+ESPN_TEAM_URL = (
+    "https://site.api.espn.com/apis/site/v2/sports/basketball/"
+    "mens-college-basketball/teams/{team_id}?enable=roster,projection,stats"
+)
+
+NCAA_RANKINGS_URL = "https://www.ncaa.com/rankings/basketball-men/d1"
+
 
 # ========================
 # UTILITIES
 # ========================
 
-def fetch_page(url: str, retries: int = 3) -> BeautifulSoup | None:
-    """Fetch a page and return a BeautifulSoup object. Retries on failure."""
+def fetch_json(url: str, retries: int = 3) -> dict | None:
     for attempt in range(retries):
         try:
-            print(f"  Fetching: {url}")
+            print(f"  GET {url}")
+            resp = SESSION.get(url, timeout=15)
+            resp.raise_for_status()
+            time.sleep(REQUEST_DELAY)
+            return resp.json()
+        except (requests.RequestException, ValueError) as e:
+            print(f"  Attempt {attempt + 1} failed: {e}")
+            if attempt < retries - 1:
+                time.sleep(REQUEST_DELAY * (attempt + 2))
+    return None
+
+
+def fetch_html(url: str, retries: int = 3) -> BeautifulSoup | None:
+    for attempt in range(retries):
+        try:
+            print(f"  GET {url}")
             resp = SESSION.get(url, timeout=15)
             resp.raise_for_status()
             time.sleep(REQUEST_DELAY)
@@ -75,51 +98,73 @@ def save_json(data: list | dict, filename: str) -> Path:
     path = OUTPUT_DIR / filename
     with open(path, "w") as f:
         json.dump(data, f, indent=2)
-    print(f"  Saved {len(data) if isinstance(data, list) else 1} records to {path}")
+    count = len(data) if isinstance(data, list) else len(data) if isinstance(data, dict) else 1
+    print(f"  Saved {count} records to {path}")
     return path
 
 
+def _safe_float(val) -> float | None:
+    try:
+        return float(str(val).replace(",", ""))
+    except (ValueError, TypeError):
+        return None
+
+
+def _safe_int(val) -> int:
+    try:
+        return int(str(val).replace(",", ""))
+    except (ValueError, TypeError):
+        return 0
+
+
+def _make_short_name(name: str) -> str:
+    stopwords = {"University", "College", "State", "of", "the", "at", "A&M"}
+    parts = [p for p in name.split() if p not in stopwords]
+    return parts[-1] if parts else name[:8]
+
+
 # ========================
-# TEAMS SCRAPER
+# ESPN TEAMS SCRAPER
 # ========================
 
-def scrape_teams() -> list[dict]:
+def scrape_teams_espn() -> list[dict]:
     """
-    Scrape D1 team list from the stats site.
-    Returns list of {id, name, shortName, conference, division}.
+    Fetch all D1 teams from the ESPN API bulk endpoint.
+    Returns a list of team dicts with basic info (no per-team stats).
     """
-    print("\n[Teams] Scraping D1 team list...")
+    print("\n[Teams] Fetching D1 team list from ESPN...")
 
-    # Stats team list page — the dropdown on the stats site
-    url = f"{STATS_BASE}/d1/p1"
-    soup = fetch_page(url)
-    if not soup:
-        print("  Could not fetch teams page.")
+    data = fetch_json(ESPN_TEAMS_URL)
+    if not data:
+        print("  Failed to fetch ESPN teams.")
         return []
 
+    raw_teams = data.get("sports", [{}])[0].get("leagues", [{}])[0].get("teams", [])
+    if not raw_teams:
+        # Alternate structure
+        raw_teams = data.get("teams", [])
+
     teams = []
+    for entry in raw_teams:
+        t = entry.get("team", entry)  # some responses nest under "team"
+        espn_id = str(t.get("id", ""))
+        slug = t.get("slug", "")
+        name = t.get("displayName", t.get("name", ""))
+        short_name = t.get("abbreviation", _make_short_name(name))
+        conference = ""
+        conf_obj = t.get("groups", {})
+        if isinstance(conf_obj, dict):
+            conference = conf_obj.get("name", "")
 
-    # The stats site uses a select/dropdown or team links on the page
-    # Try to find team links in the nav or team list sections
-    team_links = soup.select("a[href*='/schools/']")
-    seen = set()
-
-    for link in team_links:
-        href = link.get("href", "")
-        name = link.get_text(strip=True)
-        if not name or href in seen:
+        if not espn_id or not name:
             continue
-        seen.add(href)
-
-        # Extract slug from URL as a stable ID
-        slug_match = re.search(r"/schools/([^/]+)", href)
-        slug = slug_match.group(1) if slug_match else name.lower().replace(" ", "-")
 
         teams.append({
-            "id": slug,
+            "id": slug or espn_id,
+            "espnId": espn_id,
             "name": name,
-            "shortName": _make_short_name(name),
-            "conference": "",          # populated in scrape_stats
+            "shortName": short_name,
+            "conference": conference,
             "division": "D1",
             "netRanking": None,
             "wins": 0,
@@ -138,113 +183,105 @@ def scrape_teams() -> list[dict]:
     return teams
 
 
-def _make_short_name(name: str) -> str:
-    """Derive a short name: last word or abbreviation."""
-    stopwords = {"University", "College", "State", "of", "the", "at"}
-    parts = [p for p in name.split() if p not in stopwords]
-    return parts[-1] if parts else name[:8]
-
-
 # ========================
-# STATS SCRAPER
+# ESPN PER-TEAM STATS
 # ========================
 
-# D1 stats category pages (from https://www.ncaa.com/stats/basketball-men)
-STAT_CATEGORIES = {
-    "scoring_offense":   "/d1/current/p1/c110",
-    "scoring_defense":   "/d1/current/p1/c111",
-    "field_goal_pct":    "/d1/current/p1/c113",
-    "rebound_margin":    "/d1/current/p1/c154",
-    "assist_turnover":   "/d1/current/p1/c129",
-    "won_lost":          "/d1/current/p1/c152",
-}
+def _parse_record(record_obj: dict) -> tuple[int, int]:
+    """Parse an ESPN record object into (wins, losses)."""
+    summary = record_obj.get("summary", "0-0")
+    parts = summary.split("-")
+    if len(parts) >= 2:
+        return _safe_int(parts[0]), _safe_int(parts[1])
+    return _safe_int(record_obj.get("wins", 0)), _safe_int(record_obj.get("losses", 0))
 
-def scrape_stats(teams_by_id: dict) -> dict:
+
+def fetch_team_stats(team: dict) -> dict:
     """
-    Scrape team stats from stats pages.
-    Updates teams_by_id in-place and returns it.
+    Fetch per-team stats from ESPN and enrich the team dict in-place.
+    Returns the updated team dict.
     """
-    print("\n[Stats] Scraping team stats...")
+    espn_id = team.get("espnId")
+    if not espn_id:
+        return team
 
-    for stat_key, path in STAT_CATEGORIES.items():
-        url = f"{STATS_BASE}{path}"
-        soup = fetch_page(url)
-        if not soup:
-            continue
+    url = ESPN_TEAM_URL.format(team_id=espn_id)
+    data = fetch_json(url)
+    if not data:
+        return team
 
-        print(f"  Processing {stat_key}...")
-        _parse_stats_table(soup, stat_key, teams_by_id)
+    team_obj = data.get("team", {})
 
-    return teams_by_id
+    # Conference
+    conf = team_obj.get("groups", {})
+    if isinstance(conf, dict) and conf.get("name"):
+        team["conference"] = conf["name"]
 
+    # Records — ESPN returns an array of record objects
+    records = team_obj.get("record", {}).get("items", [])
+    for rec in records:
+        rec_type = rec.get("type", "")
+        rec_name = rec.get("name", "")
+        label = (rec_type + rec_name).lower()
 
-def _parse_stats_table(soup: BeautifulSoup, stat_key: str, teams_by_id: dict):
-    """Parse a single stats table and update the teams dict."""
-    table = soup.find("table")
-    if not table:
-        return
+        w, l = _parse_record(rec)
 
-    headers = [th.get_text(strip=True).lower() for th in table.select("thead th")]
+        if "overall" in label or "total" in label:
+            team["wins"] = w
+            team["losses"] = l
+        elif "home" in label:
+            team["homeWins"] = w
+            team["homeLosses"] = l
+        elif "road" in label or "away" in label:
+            team["awayWins"] = w
+            team["awayLosses"] = l
+        elif "conference" in label or "conf" in label:
+            team["confWins"] = w
+            team["confLosses"] = l
 
-    for row in table.select("tbody tr"):
-        cols = [td.get_text(strip=True) for td in row.select("td")]
-        if len(cols) < 2:
-            continue
+    # Neutral = total - home - away
+    team["neutralWins"] = max(0, team["wins"] - team["homeWins"] - team["awayWins"])
+    team["neutralLosses"] = max(0, team["losses"] - team["homeLosses"] - team["awayLosses"])
 
-        # First meaningful column is usually team name
-        name_col = next((i for i, h in enumerate(headers) if "team" in h or "school" in h), 1)
-        team_name = cols[name_col] if name_col < len(cols) else cols[1]
+    # Stats — ESPN returns statistics categories
+    statistics = team_obj.get("teamStats", team_obj.get("statistics", {}))
+    if isinstance(statistics, dict):
+        stat_items = statistics.get("splits", {}).get("categories", [])
+    elif isinstance(statistics, list):
+        stat_items = statistics
+    else:
+        stat_items = []
 
-        # Match to our team dict (fuzzy)
-        team = _find_team(team_name, teams_by_id)
-        if not team:
-            continue
+    for category in stat_items:
+        stats = category.get("stats", [])
+        for stat in stats:
+            name = stat.get("name", "").lower()
+            val = stat.get("value")
+            if name in ("pointspergame", "scoringoffense", "ppg"):
+                team["ppg"] = _safe_float(val)
+            elif name in ("opponentpointspergame", "scoringdefense", "opppg"):
+                team["oppPpg"] = _safe_float(val)
 
-        # Apply stats based on category
-        if stat_key == "scoring_offense":
-            ppg_idx = next((i for i, h in enumerate(headers) if "avg" in h or "ppg" in h or "pts/g" in h), -1)
-            if ppg_idx >= 0 and ppg_idx < len(cols):
-                team["ppg"] = _safe_float(cols[ppg_idx])
+    # ESPN also exposes ranking directly
+    ranking = team_obj.get("ranks", [])
+    for r in ranking:
+        if r.get("type", "").lower() in ("net", "ncaanet"):
+            team["netRanking"] = _safe_int(r.get("current", 0)) or None
 
-        elif stat_key == "scoring_defense":
-            ppg_idx = next((i for i, h in enumerate(headers) if "avg" in h), -1)
-            if ppg_idx >= 0 and ppg_idx < len(cols):
-                team["oppPpg"] = _safe_float(cols[ppg_idx])
-
-        elif stat_key == "won_lost":
-            w_idx = next((i for i, h in enumerate(headers) if h == "w"), -1)
-            l_idx = next((i for i, h in enumerate(headers) if h == "l"), -1)
-            conf_idx = next((i for i, h in enumerate(headers) if "conf" in h), -1)
-            if w_idx >= 0: team["wins"] = _safe_int(cols[w_idx])
-            if l_idx >= 0: team["losses"] = _safe_int(cols[l_idx])
-            if conf_idx >= 0: team["conference"] = cols[conf_idx]
-
-        team["updatedAt"] = int(datetime.now().timestamp() * 1000)
-
-
-def _find_team(name: str, teams_by_id: dict) -> dict | None:
-    """Find a team by name (case-insensitive, partial match)."""
-    name_lower = name.lower()
-    for team in teams_by_id.values():
-        if team["name"].lower() == name_lower:
-            return team
-        if name_lower in team["name"].lower() or team["name"].lower() in name_lower:
-            return team
-    return None
-
-
-def _safe_float(val: str) -> float | None:
-    try:
-        return float(val.replace(",", ""))
-    except (ValueError, AttributeError):
-        return None
+    team["updatedAt"] = int(datetime.now().timestamp() * 1000)
+    return team
 
 
-def _safe_int(val: str) -> int:
-    try:
-        return int(val.replace(",", ""))
-    except (ValueError, AttributeError):
-        return 0
+def scrape_stats_espn(teams: list[dict]) -> list[dict]:
+    """Enrich each team with per-team stats from ESPN (one request per team)."""
+    print(f"\n[Stats] Fetching per-team stats for {len(teams)} teams from ESPN...")
+    print("  (This makes one API call per team — may take a few minutes)")
+
+    for i, team in enumerate(teams, 1):
+        print(f"  [{i}/{len(teams)}] {team['name']}")
+        fetch_team_stats(team)
+
+    return teams
 
 
 # ========================
@@ -253,68 +290,68 @@ def _safe_int(val: str) -> int:
 
 def scrape_net_rankings() -> list[dict]:
     """
-    Scrape NET rankings.
-    The official NET rankings are published at ncaa.com during the season.
-    This function tries the official page; falls back to a known public data
-    page if unavailable.
-
+    Scrape NET rankings from ncaa.com.
     Returns list of {rank, teamName, conference, record}.
     """
-    print("\n[NET Rankings] Scraping NET rankings...")
+    print("\n[NET Rankings] Scraping NET rankings from ncaa.com...")
 
+    soup = fetch_html(NCAA_RANKINGS_URL)
     rankings = []
-
-    # Attempt 1: official NET page (published in-season)
-    url = f"{BASE_URL}/rankings/basketball-men/d1"
-    soup = fetch_page(url)
 
     if soup:
         rows = soup.select("table tbody tr")
         for row in rows:
             cols = [td.get_text(strip=True) for td in row.select("td")]
-            if len(cols) >= 2:
-                rank_text = cols[0].strip().lstrip("#")
-                if not rank_text.isdigit():
-                    continue
-                rankings.append({
-                    "rank": int(rank_text),
-                    "teamName": cols[1] if len(cols) > 1 else "",
-                    "conference": cols[2] if len(cols) > 2 else "",
-                    "record": cols[3] if len(cols) > 3 else "",
-                })
+            if len(cols) < 2:
+                continue
+            rank_text = cols[0].strip().lstrip("#")
+            if not rank_text.isdigit():
+                continue
+            rankings.append({
+                "rank": int(rank_text),
+                "teamName": cols[1] if len(cols) > 1 else "",
+                "conference": cols[2] if len(cols) > 2 else "",
+                "record": cols[3] if len(cols) > 3 else "",
+            })
 
     if not rankings:
-        print("  Could not parse rankings. Rankings may not be published yet.")
-        print("  During the season (Nov-Mar) try running again.")
+        print("  No NET rankings found — may not be published yet (in-season: Nov–Mar).")
+    else:
+        print(f"  Found {len(rankings)} NET rankings.")
 
-    print(f"  Found {len(rankings)} NET rankings.")
     return rankings
 
 
-def merge_rankings_into_teams(rankings: list[dict], teams_by_id: dict) -> dict:
-    """Apply NET rankings to the teams dict."""
+def merge_rankings_into_teams(rankings: list[dict], teams: list[dict]) -> list[dict]:
+    """Apply NET rankings to the teams list. Matches by name (exact then partial)."""
     rank_map = {r["teamName"].lower(): r["rank"] for r in rankings}
 
-    for team in teams_by_id.values():
-        net = rank_map.get(team["name"].lower())
+    for team in teams:
+        # Skip if ESPN already gave us a NET ranking
+        if team.get("netRanking"):
+            continue
+
+        name_lower = team["name"].lower()
+        net = rank_map.get(name_lower)
+
         if not net:
-            # Try partial match
+            # Partial match fallback
             for rname, rank in rank_map.items():
-                if rname in team["name"].lower() or team["name"].lower() in rname:
+                if rname in name_lower or name_lower in rname:
                     net = rank
                     break
+
         if net:
             team["netRanking"] = net
 
-    return teams_by_id
+    return teams
 
 
 # ========================
-# S3 UPLOAD (optional)
+# S3 UPLOAD
 # ========================
 
 def upload_to_s3(local_path: Path, bucket: str, key: str):
-    """Upload a file to S3. Requires boto3 and AWS credentials."""
     import boto3
     s3 = boto3.client("s3")
     s3.upload_file(str(local_path), bucket, key)
@@ -331,7 +368,7 @@ def main():
         "--target",
         choices=["teams", "rankings", "stats", "all"],
         default="all",
-        help="What to scrape",
+        help="What to scrape (teams=ESPN bulk list, stats=per-team ESPN stats, rankings=ncaa.com NET)",
     )
     parser.add_argument(
         "--upload-s3",
@@ -342,21 +379,39 @@ def main():
 
     s3_bucket = os.getenv("S3_SCRAPER_BUCKET")
 
-    if args.target in ("teams", "all"):
-        teams = scrape_teams()
-        teams_by_id = {t["id"]: t for t in teams}
+    if args.target == "all":
+        teams = scrape_teams_espn()
+        teams = scrape_stats_espn(teams)
+        rankings = scrape_net_rankings()
+        rankings_path = save_json(rankings, "rankings.json")
+        teams = merge_rankings_into_teams(rankings, teams)
+        teams_path = save_json(teams, "teams.json")
 
-        if args.target in ("stats", "all") or args.target == "teams":
-            scrape_stats(teams_by_id)
+        if args.upload_s3 and s3_bucket:
+            upload_to_s3(teams_path, s3_bucket, "scraper/teams.json")
+            upload_to_s3(rankings_path, s3_bucket, "scraper/rankings.json")
 
-        if args.target in ("rankings", "all"):
-            rankings = scrape_net_rankings()
-            save_json(rankings, "rankings.json")
-            merge_rankings_into_teams(rankings, teams_by_id)
-            if args.upload_s3 and s3_bucket:
-                upload_to_s3(OUTPUT_DIR / "rankings.json", s3_bucket, "scraper/rankings.json")
+    elif args.target == "teams":
+        teams = scrape_teams_espn()
+        # Load existing rankings if available to merge
+        rankings_file = OUTPUT_DIR / "rankings.json"
+        if rankings_file.exists():
+            with open(rankings_file) as f:
+                rankings = json.load(f)
+            teams = merge_rankings_into_teams(rankings, teams)
+        path = save_json(teams, "teams.json")
+        if args.upload_s3 and s3_bucket:
+            upload_to_s3(path, s3_bucket, "scraper/teams.json")
 
-        path = save_json(list(teams_by_id.values()), "teams.json")
+    elif args.target == "stats":
+        teams_file = OUTPUT_DIR / "teams.json"
+        if not teams_file.exists():
+            print("Run --target teams first to create teams.json")
+            return
+        with open(teams_file) as f:
+            teams = json.load(f)
+        teams = scrape_stats_espn(teams)
+        path = save_json(teams, "teams.json")
         if args.upload_s3 and s3_bucket:
             upload_to_s3(path, s3_bucket, "scraper/teams.json")
 
@@ -366,20 +421,15 @@ def main():
         if args.upload_s3 and s3_bucket:
             upload_to_s3(path, s3_bucket, "scraper/rankings.json")
 
-    elif args.target == "stats":
-        # Load existing teams to enrich
+        # Also merge into teams if available
         teams_file = OUTPUT_DIR / "teams.json"
         if teams_file.exists():
             with open(teams_file) as f:
                 teams = json.load(f)
-            teams_by_id = {t["id"]: t for t in teams}
-        else:
-            print("Run --target teams first to create teams.json")
-            return
-        scrape_stats(teams_by_id)
-        path = save_json(list(teams_by_id.values()), "teams.json")
-        if args.upload_s3 and s3_bucket:
-            upload_to_s3(path, s3_bucket, "scraper/teams.json")
+            teams = merge_rankings_into_teams(rankings, teams)
+            teams_path = save_json(teams, "teams.json")
+            if args.upload_s3 and s3_bucket:
+                upload_to_s3(teams_path, s3_bucket, "scraper/teams.json")
 
     print("\nDone!")
 
