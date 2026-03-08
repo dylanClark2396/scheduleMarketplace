@@ -93,18 +93,5 @@ jobs:
             echo "  $f — $COUNT records"
           done
 
-      - name: Trigger backend data sync
-        if: inputs.upload_s3 != 'false'
-        run: |
-          FUNCTION_NAME=$(aws ssm get-parameter \
-            --name /schedule-marketplace/$ENV/api-function-name \
-            --query Parameter.Value --output text)
-
-          aws lambda invoke \
-            --function-name "$FUNCTION_NAME" \
-            --payload '{"httpMethod":"POST","path":"/admin/sync","headers":{"Content-Type":"application/json"},"body":"{\"source\":\"teams\"}"}' \
-            --cli-binary-format raw-in-base64-out \
-            /tmp/sync-response.json
-
-          cat /tmp/sync-response.json
-          echo "Sync invoked on Lambda $FUNCTION_NAME."
+      # No manual sync step needed — uploading teams.json to S3 automatically
+      # triggers the scraper-sync Lambda via S3 event notification.

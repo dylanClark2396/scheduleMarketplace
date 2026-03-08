@@ -68,18 +68,22 @@ jobs:
           IMPORT_FN=$(aws ssm get-parameter \
             --name /schedule-marketplace/$ENV/import-processor-function-name \
             --query Parameter.Value --output text)
+          SCRAPER_SYNC_FN=$(aws ssm get-parameter \
+            --name /schedule-marketplace/$ENV/scraper-sync-function-name \
+            --query Parameter.Value --output text)
           DEPLOY_BUCKET=$(aws ssm get-parameter \
             --name /schedule-marketplace/$ENV/deploy-bucket \
             --query Parameter.Value --output text)
           echo "api_fn=$API_FN" >> $GITHUB_OUTPUT
           echo "import_fn=$IMPORT_FN" >> $GITHUB_OUTPUT
+          echo "scraper_sync_fn=$SCRAPER_SYNC_FN" >> $GITHUB_OUTPUT
           echo "deploy_bucket=$DEPLOY_BUCKET" >> $GITHUB_OUTPUT
 
       - name: Package bundles
         working-directory: backend
         run: |
-          # Single zip contains both handlers — Lambda uses the correct one via `Handler:` config
-          zip -j backend.zip dist/lambda.js dist/importProcessor.js
+          # Single zip contains all handlers — Lambda uses the correct one via `Handler:` config
+          zip -j backend.zip dist/lambda.js dist/importProcessor.js dist/scraperSync.js
           ls -lh backend.zip
 
       - name: Upload bundle to S3
@@ -105,13 +109,23 @@ jobs:
             --s3-key backend/backend.zip \
             --no-cli-pager
 
-      - name: Wait for both functions to finish updating
+      - name: Update scraper sync Lambda code
+        run: |
+          aws lambda update-function-code \
+            --function-name ${{ steps.ssm.outputs.scraper_sync_fn }} \
+            --s3-bucket ${{ steps.ssm.outputs.deploy_bucket }} \
+            --s3-key backend/backend.zip \
+            --no-cli-pager
+
+      - name: Wait for all functions to finish updating
         run: |
           aws lambda wait function-updated \
             --function-name ${{ steps.ssm.outputs.api_fn }}
           aws lambda wait function-updated \
             --function-name ${{ steps.ssm.outputs.import_fn }}
-          echo "Both functions updated."
+          aws lambda wait function-updated \
+            --function-name ${{ steps.ssm.outputs.scraper_sync_fn }}
+          echo "All functions updated."
 
       - name: Health check
         run: |

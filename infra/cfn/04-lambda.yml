@@ -193,6 +193,59 @@ Resources:
           Value: !Ref Environment
 
   # ---------------------------------------------------------------------------
+  # Scraper Sync Lambda — triggered by S3 when scraper/teams.json lands
+  # ---------------------------------------------------------------------------
+  ScraperSyncFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub schedule-marketplace-scraper-sync-${Environment}
+      Description: Loads scraper output from S3 into DynamoDB when files land in the scraper bucket
+      Runtime: nodejs20.x
+      Handler: scraperSync.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 60
+      MemorySize: 256
+      Code:
+        ZipFile: |
+          exports.handler = async (event) => {
+            console.log('Scraper sync placeholder — awaiting first deploy', JSON.stringify(event))
+          }
+      Environment:
+        Variables:
+          NODE_ENV: production
+          AWS_NODEJS_CONNECTION_REUSE_ENABLED: '1'
+          TEAMS_TABLE: !Ref TeamsTable
+      Tags:
+        - Key: Project
+          Value: schedule-marketplace
+        - Key: Environment
+          Value: !Ref Environment
+
+  ScraperSyncS3Permission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt ScraperSyncFunction.Arn
+      Action: lambda:InvokeFunction
+      Principal: s3.amazonaws.com
+      SourceArn: !Sub arn:aws:s3:::${ScraperBucket}
+
+  ScraperBucketNotification:
+    Type: AWS::S3::BucketNotification
+    DependsOn: ScraperSyncS3Permission
+    Properties:
+      Bucket: !Ref ScraperBucket
+      LambdaConfigurations:
+        - Event: s3:ObjectCreated:*
+          Filter:
+            S3Key:
+              Rules:
+                - Name: prefix
+                  Value: scraper/
+                - Name: suffix
+                  Value: teams.json
+          Function: !GetAtt ScraperSyncFunction.Arn
+
+  # ---------------------------------------------------------------------------
   # API Gateway HTTP API — cheaper and simpler than REST API
   # ---------------------------------------------------------------------------
   HttpApi:
@@ -272,6 +325,13 @@ Resources:
       Name: !Sub /schedule-marketplace/${Environment}/import-processor-function-name
       Type: String
       Value: !Ref ImportProcessorFunction
+
+  ParamScraperSyncFunctionName:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /schedule-marketplace/${Environment}/scraper-sync-function-name
+      Type: String
+      Value: !Ref ScraperSyncFunction
 
 Outputs:
   ApiUrl:
