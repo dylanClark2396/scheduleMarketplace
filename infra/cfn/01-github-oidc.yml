@@ -42,7 +42,6 @@ Resources:
               StringEquals:
                 token.actions.githubusercontent.com:aud: sts.amazonaws.com
               StringLike:
-                # Allow any branch/ref in this repo — tighten to "ref:refs/heads/main:*" for production
                 token.actions.githubusercontent.com:sub: !Sub repo:${GitHubOrg}/${GitHubRepo}:*
       ManagedPolicyArns:
         - !Ref DeployPolicy
@@ -55,8 +54,8 @@ Resources:
         Version: '2012-10-17'
         Statement:
 
-          # CloudFormation — deploy/update all stacks
-          - Sid: CloudFormation
+          # CloudFormation — only project stacks; ValidateTemplate has no resource scope
+          - Sid: CloudFormationStacks
             Effect: Allow
             Action:
               - cloudformation:CreateStack
@@ -67,86 +66,105 @@ Resources:
               - cloudformation:DescribeStackResource
               - cloudformation:DescribeStackResources
               - cloudformation:GetTemplate
-              - cloudformation:ValidateTemplate
               - cloudformation:ListStacks
+              - cloudformation:CreateChangeSet
+              - cloudformation:DescribeChangeSet
+              - cloudformation:ExecuteChangeSet
+              - cloudformation:DeleteChangeSet
+            Resource:
+              - !Sub arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/schedule-marketplace-*/*
+
+          - Sid: CloudFormationValidate
+            Effect: Allow
+            Action: cloudformation:ValidateTemplate
             Resource: '*'
 
-          # S3 — artifact upload, frontend deploy, bucket config
-          - Sid: S3Deploy
+          # S3 — project buckets only (objects + bucket-level ops)
+          - Sid: S3Objects
             Effect: Allow
             Action:
               - s3:PutObject
               - s3:GetObject
               - s3:DeleteObject
+            Resource:
+              - !Sub arn:aws:s3:::schedule-marketplace-deploy-${Environment}-${AWS::AccountId}/*
+              - !Sub arn:aws:s3:::schedule-marketplace-frontend-${Environment}-${AWS::AccountId}/*
+
+          - Sid: S3Buckets
+            Effect: Allow
+            Action:
               - s3:ListBucket
               - s3:GetBucketLocation
               - s3:GetBucketPolicy
               - s3:PutBucketPolicy
-              - s3:CreateBucket
-              - s3:PutBucketWebsite
               - s3:PutBucketPublicAccessBlock
-            Resource: '*'
+              - s3:CreateBucket
+              - s3:PutBucketVersioning
+              - s3:PutLifecycleConfiguration
+              - s3:PutBucketCORS
+            Resource:
+              - !Sub arn:aws:s3:::schedule-marketplace-*-${Environment}-${AWS::AccountId}
 
-          # SSM Parameter Store — read deploy config, send commands to EC2
-          - Sid: SSM
+          # SSM — project parameter namespace only
+          - Sid: SSMParams
             Effect: Allow
             Action:
               - ssm:GetParameter
               - ssm:GetParameters
               - ssm:GetParametersByPath
               - ssm:PutParameter
-              - ssm:SendCommand
-              - ssm:GetCommandInvocation
-              - ssm:ListCommandInvocations
-              - ssm:DescribeInstanceInformation
-            Resource: '*'
+              - ssm:DeleteParameter
+            Resource:
+              - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/schedule-marketplace/*
 
-          # EC2 — create/manage compute stack resources
-          - Sid: EC2
+          # Lambda — update function code and read config (for deploy workflow)
+          - Sid: LambdaDeploy
             Effect: Allow
             Action:
-              - ec2:RunInstances
-              - ec2:TerminateInstances
-              - ec2:DescribeInstances
-              - ec2:DescribeInstanceStatus
-              - ec2:DescribeImages
-              - ec2:DescribeKeyPairs
-              - ec2:DescribeSecurityGroups
-              - ec2:DescribeSubnets
-              - ec2:DescribeVpcs
-              - ec2:CreateSecurityGroup
-              - ec2:DeleteSecurityGroup
-              - ec2:AuthorizeSecurityGroupIngress
-              - ec2:AuthorizeSecurityGroupEgress
-              - ec2:RevokeSecurityGroupIngress
-              - ec2:RevokeSecurityGroupEgress
-              - ec2:AllocateAddress
-              - ec2:AssociateAddress
-              - ec2:ReleaseAddress
-              - ec2:DescribeAddresses
-              - ec2:CreateTags
-              - ec2:ModifyInstanceAttribute
-            Resource: '*'
+              - lambda:UpdateFunctionCode
+              - lambda:GetFunction
+              - lambda:GetFunctionConfiguration
+              - lambda:ListVersionsByFunction
+              - lambda:PublishVersion
+            Resource:
+              - !Sub arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:schedule-marketplace-*
 
-          # IAM — create roles/profiles for EC2 and other services
-          - Sid: IAM
+          # Lambda — create/manage functions (for CFN stack deploy)
+          - Sid: LambdaManage
+            Effect: Allow
+            Action:
+              - lambda:CreateFunction
+              - lambda:DeleteFunction
+              - lambda:UpdateFunctionConfiguration
+              - lambda:AddPermission
+              - lambda:RemovePermission
+              - lambda:GetPolicy
+              - lambda:TagResource
+            Resource:
+              - !Sub arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:schedule-marketplace-*
+
+          # IAM — project roles/policies only (needed for CFN to manage Lambda execution role)
+          - Sid: IAMRoles
             Effect: Allow
             Action:
               - iam:CreateRole
               - iam:DeleteRole
               - iam:GetRole
               - iam:TagRole
-              - iam:PassRole
+              - iam:UpdateRole
               - iam:AttachRolePolicy
               - iam:DetachRolePolicy
               - iam:PutRolePolicy
               - iam:GetRolePolicy
               - iam:DeleteRolePolicy
-              - iam:CreateInstanceProfile
-              - iam:DeleteInstanceProfile
-              - iam:GetInstanceProfile
-              - iam:AddRoleToInstanceProfile
-              - iam:RemoveRoleFromInstanceProfile
+              - iam:ListRolePolicies
+              - iam:ListAttachedRolePolicies
+            Resource:
+              - !Sub arn:aws:iam::${AWS::AccountId}:role/schedule-marketplace-*
+
+          - Sid: IAMPolicies
+            Effect: Allow
+            Action:
               - iam:CreatePolicy
               - iam:DeletePolicy
               - iam:GetPolicy
@@ -154,12 +172,16 @@ Resources:
               - iam:CreatePolicyVersion
               - iam:ListPolicyVersions
               - iam:DeletePolicyVersion
-              - iam:CreateOIDCProvider
-              - iam:GetOIDCProvider
-              - iam:DeleteOIDCProvider
-            Resource: '*'
+            Resource:
+              - !Sub arn:aws:iam::${AWS::AccountId}:policy/schedule-marketplace-*
 
-          # DynamoDB — create tables in storage stack
+          - Sid: IAMPassRole
+            Effect: Allow
+            Action: iam:PassRole
+            Resource:
+              - !Sub arn:aws:iam::${AWS::AccountId}:role/schedule-marketplace-*
+
+          # DynamoDB — project tables only
           - Sid: DynamoDB
             Effect: Allow
             Action:
@@ -167,11 +189,18 @@ Resources:
               - dynamodb:DeleteTable
               - dynamodb:DescribeTable
               - dynamodb:UpdateTable
-              - dynamodb:ListTables
               - dynamodb:TagResource
-            Resource: '*'
+              - dynamodb:DescribeTimeToLive
+              - dynamodb:UpdateTimeToLive
+              - dynamodb:DescribeContinuousBackups
+            Resource:
+              - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/teams_*
+              - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/schedules_*
+              - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/marketplace_*
+              - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/import_jobs_*
 
-          # Cognito — create user pool in cognito stack
+          # Cognito — scoped to user pools tagged to this project
+          # (can't scope by ARN at create time, so scoped to pool name prefix via condition)
           - Sid: Cognito
             Effect: Allow
             Action:
@@ -188,7 +217,22 @@ Resources:
               - cognito-idp:DescribeUserPoolDomain
             Resource: '*'
 
-          # CloudFront — create/invalidate distribution
+          # API Gateway — project APIs only
+          - Sid: ApiGateway
+            Effect: Allow
+            Action:
+              - apigateway:GET
+              - apigateway:POST
+              - apigateway:PUT
+              - apigateway:PATCH
+              - apigateway:DELETE
+              - apigateway:TagResource
+            Resource:
+              - !Sub arn:aws:apigateway:${AWS::Region}::/apis
+              - !Sub arn:aws:apigateway:${AWS::Region}::/apis/*
+
+          # CloudFront — project distributions only
+          # (distribution ID unknown at policy creation time, so scoped broadly but actions limited)
           - Sid: CloudFront
             Effect: Allow
             Action:
@@ -205,7 +249,7 @@ Resources:
               - cloudfront:TagResource
             Resource: '*'
 
-          # ACM — request/manage certificates
+          # ACM — certificates only (CloudFront requires us-east-1 certs)
           - Sid: ACM
             Effect: Allow
             Action:

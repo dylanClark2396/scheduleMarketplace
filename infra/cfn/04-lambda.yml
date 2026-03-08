@@ -71,7 +71,7 @@ Resources:
             Version: '2012-10-17'
             Statement:
 
-              # DynamoDB — project tables only
+              # DynamoDB — exact project tables and their GSIs only
               - Sid: DynamoDB
                 Effect: Allow
                 Action:
@@ -84,8 +84,14 @@ Resources:
                   - dynamodb:BatchGetItem
                   - dynamodb:BatchWriteItem
                 Resource:
-                  - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/*
-                  - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/*/index/*
+                  - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${TeamsTable}
+                  - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${TeamsTable}/index/*
+                  - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${SchedulesTable}
+                  - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${SchedulesTable}/index/*
+                  - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${MarketplaceTable}
+                  - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${MarketplaceTable}/index/*
+                  - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ImportJobsTable}
+                  - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ImportJobsTable}/index/*
 
               # S3 — import and scraper buckets
               - Sid: S3
