@@ -89,6 +89,7 @@ Resources:
             Resource:
               - !Sub arn:aws:s3:::schedule-marketplace-deploy-${Environment}-${AWS::AccountId}/*
               - !Sub arn:aws:s3:::schedule-marketplace-frontend-${Environment}-${AWS::AccountId}/*
+              - !Sub arn:aws:s3:::schedule-marketplace-scraper-${Environment}-${AWS::AccountId}/*
 
           - Sid: S3Buckets
             Effect: Allow
