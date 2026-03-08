@@ -96,19 +96,15 @@ jobs:
       - name: Trigger backend data sync
         if: inputs.upload_s3 != 'false'
         run: |
-          API_IP=$(aws ssm get-parameter \
-            --name /schedule-marketplace/$ENV/api-ip \
-            --query Parameter.Value --output text)
-          INSTANCE_ID=$(aws ssm get-parameter \
-            --name /schedule-marketplace/$ENV/api-instance-id \
+          FUNCTION_NAME=$(aws ssm get-parameter \
+            --name /schedule-marketplace/$ENV/api-function-name \
             --query Parameter.Value --output text)
 
-          # Call /admin/sync on the running backend via SSM (no public HTTP needed)
-          aws ssm send-command \
-            --instance-ids "$INSTANCE_ID" \
-            --document-name "AWS-RunShellScript" \
-            --parameters "commands=[\"curl -s -X POST http://localhost:3000/admin/sync -H 'Content-Type: application/json' -d '{\\\"source\\\":\\\"teams\\\"}'\"]" \
-            --comment "Post-scrape sync" \
-            --output text > /dev/null
+          aws lambda invoke \
+            --function-name "$FUNCTION_NAME" \
+            --payload '{"httpMethod":"POST","path":"/admin/sync","headers":{"Content-Type":"application/json"},"body":"{\"source\":\"teams\"}"}' \
+            --cli-binary-format raw-in-base64-out \
+            /tmp/sync-response.json
 
-          echo "Sync command sent to backend."
+          cat /tmp/sync-response.json
+          echo "Sync invoked on Lambda $FUNCTION_NAME."
