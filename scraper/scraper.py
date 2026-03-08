@@ -24,7 +24,6 @@ from pathlib import Path
 from datetime import datetime
 
 import requests
-from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -57,7 +56,10 @@ ESPN_TEAM_URL = (
     "mens-college-basketball/teams/{team_id}?enable=roster,projection,stats"
 )
 
-NCAA_RANKINGS_URL = "https://www.ncaa.com/rankings/basketball-men/d1"
+NCAA_RANKINGS_URL = (
+    "https://ncaa-api.henrygd.me/rankings/basketball-men/d1/"
+    "ncaa-mens-basketball-net-rankings"
+)
 
 
 # ========================
@@ -78,20 +80,6 @@ def fetch_json(url: str, retries: int = 3) -> dict | None:
                 time.sleep(REQUEST_DELAY * (attempt + 2))
     return None
 
-
-def fetch_html(url: str, retries: int = 3) -> BeautifulSoup | None:
-    for attempt in range(retries):
-        try:
-            print(f"  GET {url}")
-            resp = SESSION.get(url, timeout=15)
-            resp.raise_for_status()
-            time.sleep(REQUEST_DELAY)
-            return BeautifulSoup(resp.text, "lxml")
-        except requests.RequestException as e:
-            print(f"  Attempt {attempt + 1} failed: {e}")
-            if attempt < retries - 1:
-                time.sleep(REQUEST_DELAY * (attempt + 2))
-    return None
 
 
 def save_json(data: list | dict, filename: str) -> Path:
@@ -290,28 +278,27 @@ def scrape_stats_espn(teams: list[dict]) -> list[dict]:
 
 def scrape_net_rankings() -> list[dict]:
     """
-    Scrape NET rankings from ncaa.com.
+    Fetch NET rankings from ncaa-api.henrygd.me (a JSON wrapper around ncaa.com).
+    ncaa.com's rankings page is JS/GraphQL rendered so direct HTML scraping only
+    returns ~25 rows. This API returns all ~365 D1 teams in one request.
     Returns list of {rank, teamName, conference, record}.
     """
-    print("\n[NET Rankings] Scraping NET rankings from ncaa.com...")
+    print("\n[NET Rankings] Fetching NET rankings from ncaa-api.henrygd.me...")
 
-    soup = fetch_html(NCAA_RANKINGS_URL)
+    data = fetch_json(NCAA_RANKINGS_URL)
     rankings = []
 
-    if soup:
-        rows = soup.select("table tbody tr")
-        for row in rows:
-            cols = [td.get_text(strip=True) for td in row.select("td")]
-            if len(cols) < 2:
-                continue
-            rank_text = cols[0].strip().lstrip("#")
-            if not rank_text.isdigit():
+    if data:
+        for entry in data.get("data", []):
+            rank = entry.get("Rank")
+            team = entry.get("School", "")
+            if not rank or not team:
                 continue
             rankings.append({
-                "rank": int(rank_text),
-                "teamName": cols[1] if len(cols) > 1 else "",
-                "conference": cols[2] if len(cols) > 2 else "",
-                "record": cols[3] if len(cols) > 3 else "",
+                "rank": int(rank),
+                "teamName": team,
+                "conference": entry.get("Conf", ""),
+                "record": entry.get("Record", ""),
             })
 
     if not rankings:
