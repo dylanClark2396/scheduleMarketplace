@@ -2,12 +2,13 @@
   "name": "schedule-marketplace-backend",
   "version": "1.0.0",
   "description": "NCAA Basketball Schedule Marketplace API",
-  "main": "index.js",
+  "main": "index.ts",
   "type": "module",
   "scripts": {
-    "dev": "nodemon index.js",
-    "start": "node index.js",
-    "build": "esbuild lambda.js importProcessor.js --bundle --platform=node --format=cjs --outdir=dist"
+    "dev": "tsx watch index.ts",
+    "start": "node dist/index.js",
+    "build": "esbuild lambda.ts importProcessor.ts --bundle --platform=node --format=cjs --outdir=dist --external:@aws-sdk/*",
+    "typecheck": "tsc --noEmit"
   },
   "keywords": [],
   "author": "",
@@ -27,7 +28,11 @@
     "express": "^5.2.1"
   },
   "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.3",
+    "@types/node": "^22.0.0",
     "esbuild": "^0.27.3",
-    "nodemon": "^3.1.11"
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3"
   }
 }
