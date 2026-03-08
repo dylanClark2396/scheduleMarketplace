@@ -112,6 +112,23 @@ def _make_short_name(name: str) -> str:
     return parts[-1] if parts else name[:8]
 
 
+def _lookup_team(espn_name: str, lookup: dict):
+    """
+    Find a team in a dict keyed by NCAA-style names (e.g. 'Western Michigan')
+    given an ESPN display name (e.g. 'Western Michigan Broncos').
+
+    Strategy: try progressively shorter prefixes by stripping trailing words
+    (mascots appear at the end). This avoids false partial matches like
+    'Michigan' matching 'Western Michigan Broncos'.
+    """
+    words = espn_name.lower().split()
+    for length in range(len(words), 0, -1):
+        candidate = " ".join(words[:length])
+        if candidate in lookup:
+            return lookup[candidate]
+    return None
+
+
 # ========================
 # ESPN TEAMS SCRAPER
 # ========================
@@ -227,23 +244,17 @@ def fetch_team_stats(team: dict) -> dict:
     team["neutralWins"] = max(0, team["wins"] - team["homeWins"] - team["awayWins"])
     team["neutralLosses"] = max(0, team["losses"] - team["homeLosses"] - team["awayLosses"])
 
-    # Stats — ESPN returns statistics categories
-    statistics = team_obj.get("teamStats", team_obj.get("statistics", {}))
-    if isinstance(statistics, dict):
-        stat_items = statistics.get("splits", {}).get("categories", [])
-    elif isinstance(statistics, list):
-        stat_items = statistics
-    else:
-        stat_items = []
-
-    for category in stat_items:
-        stats = category.get("stats", [])
-        for stat in stats:
-            name = stat.get("name", "").lower()
+    # PPG / OppPPG — ESPN embeds these in the overall record's stats array
+    for rec in records:
+        rec_type = rec.get("type", "")
+        if "total" not in rec_type and "overall" not in rec_type.lower():
+            continue
+        for stat in rec.get("stats", []):
+            sname = stat.get("name", "").lower()
             val = stat.get("value")
-            if name in ("pointspergame", "scoringoffense", "ppg"):
+            if sname in ("avgpointsfor", "pointspergame", "scoringoffense", "ppg"):
                 team["ppg"] = _safe_float(val)
-            elif name in ("opponentpointspergame", "scoringdefense", "opppg"):
+            elif sname in ("avgpointsagainst", "opponentpointspergame", "scoringdefense", "opppg"):
                 team["oppPpg"] = _safe_float(val)
 
     # ESPN also exposes ranking directly
@@ -340,20 +351,10 @@ def scrape_standings() -> dict[str, dict]:
 def merge_standings_into_teams(standings: dict[str, dict], teams: list[dict]) -> list[dict]:
     """Apply conference win/loss records to the teams list."""
     for team in teams:
-        name_lower = team["name"].lower()
-        entry = standings.get(name_lower)
-
-        if not entry:
-            # Partial match fallback
-            for sname, s in standings.items():
-                if sname in name_lower or name_lower in sname:
-                    entry = s
-                    break
-
+        entry = _lookup_team(team["name"], standings)
         if entry:
             team["confWins"]   = entry["confWins"]
             team["confLosses"] = entry["confLosses"]
-
     return teams
 
 
@@ -367,27 +368,19 @@ def _parse_wl(record_str: str) -> tuple[int, int]:
 
 def merge_rankings_into_teams(rankings: list[dict], teams: list[dict]) -> list[dict]:
     """
-    Apply NET rankings data to the teams list. Matches by name (exact then partial).
+    Apply NET rankings data to the teams list.
 
     Sets from NET rankings (more reliable than ESPN public API):
       - netRanking, conference
       - homeWins/homeLosses, awayWins/awayLosses, neutralWins/neutralLosses
       - wins/losses (overall, if ESPN didn't provide them)
 
-    confWins/confLosses are not available from any public source used here.
+    confWins/confLosses are handled separately via merge_standings_into_teams.
     """
     rank_map = {r["teamName"].lower(): r for r in rankings}
 
     for team in teams:
-        name_lower = team["name"].lower()
-        entry = rank_map.get(name_lower)
-
-        if not entry:
-            for rname, r in rank_map.items():
-                if rname in name_lower or name_lower in rname:
-                    entry = r
-                    break
-
+        entry = _lookup_team(team["name"], rank_map)
         if not entry:
             continue
 
@@ -400,14 +393,14 @@ def merge_rankings_into_teams(rankings: list[dict], teams: list[dict]) -> list[d
         hw, hl = _parse_wl(entry.get("Home", "0-0"))
         rw, rl = _parse_wl(entry.get("Road", "0-0"))
         nw, nl = _parse_wl(entry.get("Neutral", "0-0"))
-        team["homeWins"]    = hw
-        team["homeLosses"]  = hl
-        team["awayWins"]    = rw
-        team["awayLosses"]  = rl
-        team["neutralWins"] = nw
+        team["homeWins"]      = hw
+        team["homeLosses"]    = hl
+        team["awayWins"]      = rw
+        team["awayLosses"]    = rl
+        team["neutralWins"]   = nw
         team["neutralLosses"] = nl
 
-        # Overall wins/losses — use ESPN value if present, else derive from location records
+        # Overall wins/losses — use ESPN value if present, else sum location records
         if not team.get("wins") and not team.get("losses"):
             team["wins"]   = hw + rw + nw
             team["losses"] = hl + rl + nl
