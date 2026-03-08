@@ -60,6 +60,7 @@ NCAA_RANKINGS_URL = (
     "https://ncaa-api.henrygd.me/rankings/basketball-men/d1/"
     "ncaa-mens-basketball-net-rankings"
 )
+NCAA_STANDINGS_URL = "https://ncaa-api.henrygd.me/standings/basketball-men/d1"
 
 
 # ========================
@@ -251,6 +252,12 @@ def fetch_team_stats(team: dict) -> dict:
         if r.get("type", "").lower() in ("net", "ncaanet"):
             team["netRanking"] = _safe_int(r.get("current", 0)) or None
 
+    # netEfficiency: point differential per game (best proxy from free public data)
+    ppg = team.get("ppg")
+    opp = team.get("oppPpg")
+    if ppg is not None and opp is not None:
+        team["netEfficiency"] = round(ppg - opp, 2)
+
     team["updatedAt"] = int(datetime.now().timestamp() * 1000)
     return team
 
@@ -304,12 +311,70 @@ def scrape_net_rankings() -> list[dict]:
     return rankings
 
 
+def scrape_standings() -> dict[str, dict]:
+    """
+    Fetch conference standings from ncaa-api.henrygd.me.
+    Returns a dict keyed by lowercase team name:
+      { "duke": { "confWins": 17, "confLosses": 1 }, ... }
+    """
+    print("\n[Standings] Fetching conference standings from ncaa-api.henrygd.me...")
+
+    data = fetch_json(NCAA_STANDINGS_URL)
+    result: dict[str, dict] = {}
+
+    if data:
+        for conf_block in data.get("data", []):
+            for entry in conf_block.get("standings", []):
+                school = entry.get("School", "").strip()
+                if not school:
+                    continue
+                result[school.lower()] = {
+                    "confWins":   _safe_int(entry.get("Conference W", 0)),
+                    "confLosses": _safe_int(entry.get("Conference L", 0)),
+                }
+
+    print(f"  Found standings for {len(result)} teams.")
+    return result
+
+
+def merge_standings_into_teams(standings: dict[str, dict], teams: list[dict]) -> list[dict]:
+    """Apply conference win/loss records to the teams list."""
+    for team in teams:
+        name_lower = team["name"].lower()
+        entry = standings.get(name_lower)
+
+        if not entry:
+            # Partial match fallback
+            for sname, s in standings.items():
+                if sname in name_lower or name_lower in sname:
+                    entry = s
+                    break
+
+        if entry:
+            team["confWins"]   = entry["confWins"]
+            team["confLosses"] = entry["confLosses"]
+
+    return teams
+
+
+def _parse_wl(record_str: str) -> tuple[int, int]:
+    """Parse a 'W-L' string like '10-1' into (wins, losses)."""
+    parts = str(record_str).split("-")
+    if len(parts) == 2:
+        return _safe_int(parts[0]), _safe_int(parts[1])
+    return 0, 0
+
+
 def merge_rankings_into_teams(rankings: list[dict], teams: list[dict]) -> list[dict]:
     """
-    Apply NET rankings and conference to the teams list.
-    Matches by name (exact then partial).
-    Conference comes from the NET rankings response since ESPN's API
-    doesn't reliably return conference names.
+    Apply NET rankings data to the teams list. Matches by name (exact then partial).
+
+    Sets from NET rankings (more reliable than ESPN public API):
+      - netRanking, conference
+      - homeWins/homeLosses, awayWins/awayLosses, neutralWins/neutralLosses
+      - wins/losses (overall, if ESPN didn't provide them)
+
+    confWins/confLosses are not available from any public source used here.
     """
     rank_map = {r["teamName"].lower(): r for r in rankings}
 
@@ -318,17 +383,34 @@ def merge_rankings_into_teams(rankings: list[dict], teams: list[dict]) -> list[d
         entry = rank_map.get(name_lower)
 
         if not entry:
-            # Partial match fallback
             for rname, r in rank_map.items():
                 if rname in name_lower or name_lower in rname:
                     entry = r
                     break
 
-        if entry:
-            if not team.get("netRanking"):
-                team["netRanking"] = entry["rank"]
-            if not team.get("conference"):
-                team["conference"] = entry.get("conference", "")
+        if not entry:
+            continue
+
+        if not team.get("netRanking"):
+            team["netRanking"] = entry["rank"]
+        if not team.get("conference"):
+            team["conference"] = entry.get("conference", "")
+
+        # Location records from NET rankings are authoritative
+        hw, hl = _parse_wl(entry.get("Home", "0-0"))
+        rw, rl = _parse_wl(entry.get("Road", "0-0"))
+        nw, nl = _parse_wl(entry.get("Neutral", "0-0"))
+        team["homeWins"]    = hw
+        team["homeLosses"]  = hl
+        team["awayWins"]    = rw
+        team["awayLosses"]  = rl
+        team["neutralWins"] = nw
+        team["neutralLosses"] = nl
+
+        # Overall wins/losses — use ESPN value if present, else derive from location records
+        if not team.get("wins") and not team.get("losses"):
+            team["wins"]   = hw + rw + nw
+            team["losses"] = hl + rl + nl
 
     return teams
 
@@ -369,8 +451,10 @@ def main():
         teams = scrape_teams_espn()
         teams = scrape_stats_espn(teams)
         rankings = scrape_net_rankings()
+        standings = scrape_standings()
         rankings_path = save_json(rankings, "rankings.json")
         teams = merge_rankings_into_teams(rankings, teams)
+        teams = merge_standings_into_teams(standings, teams)
         teams_path = save_json(teams, "teams.json")
 
         if args.upload_s3 and s3_bucket:
@@ -379,7 +463,6 @@ def main():
 
     elif args.target == "teams":
         teams = scrape_teams_espn()
-        # Use cached rankings if available, otherwise fetch live
         rankings_file = OUTPUT_DIR / "rankings.json"
         if rankings_file.exists():
             with open(rankings_file) as f:
@@ -387,7 +470,9 @@ def main():
         else:
             rankings = scrape_net_rankings()
             save_json(rankings, "rankings.json")
+        standings = scrape_standings()
         teams = merge_rankings_into_teams(rankings, teams)
+        teams = merge_standings_into_teams(standings, teams)
         path = save_json(teams, "teams.json")
         if args.upload_s3 and s3_bucket:
             upload_to_s3(path, s3_bucket, "scraper/teams.json")
@@ -400,12 +485,15 @@ def main():
         with open(teams_file) as f:
             teams = json.load(f)
         teams = scrape_stats_espn(teams)
+        standings = scrape_standings()
+        teams = merge_standings_into_teams(standings, teams)
         path = save_json(teams, "teams.json")
         if args.upload_s3 and s3_bucket:
             upload_to_s3(path, s3_bucket, "scraper/teams.json")
 
     elif args.target == "rankings":
         rankings = scrape_net_rankings()
+        standings = scrape_standings()
         path = save_json(rankings, "rankings.json")
         if args.upload_s3 and s3_bucket:
             upload_to_s3(path, s3_bucket, "scraper/rankings.json")
@@ -416,6 +504,7 @@ def main():
             with open(teams_file) as f:
                 teams = json.load(f)
             teams = merge_rankings_into_teams(rankings, teams)
+            teams = merge_standings_into_teams(standings, teams)
             teams_path = save_json(teams, "teams.json")
             if args.upload_s3 and s3_bucket:
                 upload_to_s3(teams_path, s3_bucket, "scraper/teams.json")
