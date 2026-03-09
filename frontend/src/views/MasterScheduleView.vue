@@ -52,14 +52,12 @@
         </Column>
         <Column field="strengthOfSchedule" header="SOS" sortable>
           <template #body="{ data }">
-            <span v-if="data.strengthOfSchedule" class="sos-number">
-              {{ data.strengthOfSchedule.toFixed(1) }}
-            </span>
+            <span v-if="data.strengthOfSchedule" class="sos-number">{{ data.strengthOfSchedule.toFixed(1) }}</span>
             <span v-else class="muted">—</span>
           </template>
         </Column>
 
-        <!-- Q1-Q4 and Open Dates hidden on mobile — too many columns -->
+        <!-- Desktop-only columns — on mobile these live inside the expansion row -->
         <template v-if="!isMobile">
           <Column v-for="q in [1,2,3,4]" :key="q" :header="`Q${q} W-L`">
             <template #body="{ data }">
@@ -81,6 +79,29 @@
 
         <template #expansion="{ data }">
           <div class="schedule-expansion">
+
+            <!-- Mobile summary: Q1-Q4 + Open Dates shown here since they're not in the row -->
+            <div v-if="isMobile && data.sosQuadrantBreakdown" class="mobile-summary">
+              <div class="mobile-quadrants">
+                <div
+                  v-for="q in [1,2,3,4]"
+                  :key="q"
+                  class="mobile-quad-box"
+                  :style="{ borderLeft: `3px solid ${QUADRANT_COLORS[q]}` }"
+                >
+                  <span class="mobile-quad-label" :style="{ color: QUADRANT_COLORS[q] }">Q{{ q }}</span>
+                  <span class="mobile-quad-record">
+                    {{ data.sosQuadrantBreakdown[`q${q}Wins`] }}-{{ data.sosQuadrantBreakdown[`q${q}Losses`] }}
+                  </span>
+                </div>
+              </div>
+              <div class="mobile-open-dates">
+                <span class="mobile-open-label">Open Dates</span>
+                <Tag :value="(data.openDates?.length ?? 0).toString()" severity="warn" />
+              </div>
+            </div>
+
+            <!-- Games table -->
             <DataTable :value="data.games" :rows="10" paginator size="small">
               <Column field="date" header="Date" sortable />
               <Column field="opponentName" header="Opponent">
@@ -92,7 +113,6 @@
               <Column field="location" header="Loc">
                 <template #body="{ data: g }">{{ LOCATION_LABELS[g.location] }}</template>
               </Column>
-              <!-- Q and Conf hidden on mobile -->
               <template v-if="!isMobile">
                 <Column header="Q">
                   <template #body="{ data: g }">
@@ -139,7 +159,6 @@ const filterConference = ref('All')
 const filterSeason = ref<string>(SEASONS[1] ?? '')
 const searchQuery = ref('')
 
-// Reactive mobile breakpoint — hides Q/OpenDates columns below 640px
 const isMobile = ref(window.innerWidth <= 640)
 function onResize() { isMobile.value = window.innerWidth <= 640 }
 onMounted(() => window.addEventListener('resize', onResize))
@@ -170,7 +189,7 @@ onMounted(async () => {
 })
 
 async function onRowExpand(event: { data: TeamSchedule }) {
-  if (event.data.games?.length) return  // already loaded
+  if (event.data.games?.length) return
   try {
     const full = await api.getPublicSchedule(event.data.id)
     const idx = schedules.value.findIndex(s => s.id === event.data.id)
@@ -223,9 +242,7 @@ async function onRowExpand(event: { data: TeamSchedule }) {
 }
 
 .team-name { font-weight: 600; }
-
 .sos-number { font-weight: 700; }
-
 .muted { color: var(--p-text-muted-color); }
 
 .schedule-expansion {
@@ -237,6 +254,53 @@ async function onRowExpand(event: { data: TeamSchedule }) {
   .schedule-expansion {
     padding: 0.75rem 0.25rem;
   }
+}
+
+/* Mobile summary strip — Q1-Q4 + Open Dates above the games table */
+.mobile-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  padding: 0 0.25rem;
+}
+
+.mobile-quadrants {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.4rem;
+}
+
+.mobile-quad-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0.3rem 0.25rem;
+  background: var(--p-surface-0);
+  border-radius: 4px;
+  gap: 0.15rem;
+}
+
+.mobile-quad-label {
+  font-size: 0.7rem;
+  font-weight: 800;
+}
+
+.mobile-quad-record {
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.mobile-open-dates {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.mobile-open-label {
+  color: var(--p-text-muted-color);
+  font-size: 0.8rem;
 }
 
 .loading-center {
