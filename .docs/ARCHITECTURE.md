@@ -166,13 +166,16 @@ GET    /health                          Liveness probe
 GET    /teams                           List all D1 teams (public)
 GET    /teams/:id
 
-GET    /schedules                       List my schedules (auth)
-POST   /schedules
-GET    /schedules/:id
-PATCH  /schedules/:id
-POST   /schedules/:id/games             Add a game
-PATCH  /schedules/:id/games/:gameId
-DELETE /schedules/:id/games/:gameId
+GET    /schedules/public                List reference schedules (auth, scheduleType=reference)
+GET    /schedules/public/:id            Fetch one reference schedule (auth)
+GET    /schedules                       List my user schedules (auth, scoped to owner_id)
+POST   /schedules                       Create user schedule; looks up team to populate teamName/conference
+GET    /schedules/:id                   Fetch one user schedule (auth, owner only)
+PATCH  /schedules/:id                   Update user schedule (auth, owner only; 403 if reference)
+DELETE /schedules/:id                   Delete user schedule (auth, owner only; 403 if reference)
+POST   /schedules/:id/games             Add a game (auth, owner only; 403 if reference)
+PATCH  /schedules/:id/games/:gameId     Update a game (auth, owner only; 403 if reference)
+DELETE /schedules/:id/games/:gameId     Delete a game (auth, owner only; 403 if reference)
 
 GET    /marketplace                     List open listings (public, filterable)
 POST   /marketplace                     Create a listing (auth)
@@ -183,11 +186,20 @@ POST   /marketplace/:id/match           Mark two listings as matched (auth)
 GET    /import/upload-url               S3 presigned PUT URL (auth)
 POST   /import                          Create + kick off async import job (auth)
 GET    /import/:id                      Poll job status (auth)
-POST   /import/:id/confirm              Save parsed games into schedule (auth)
+POST   /import/:id/confirm              Save parsed games into schedule (auth); looks up team for teamName/conference
 
 GET    /admin/scraper/status
 POST   /admin/sync                      Load scraper JSON from S3 → DynamoDB (auth)
 ```
+
+### Schedule mutation guards
+
+Every write route (`PATCH`/`DELETE` schedule, `POST`/`PATCH`/`DELETE` game) checks in order:
+
+1. `scheduleType === 'reference'` or `owner_id === 'system'` → `403 Reference schedules are read-only`
+2. `owner_id !== req.user.sub` → `403 Forbidden`
+
+Reference schedules are populated by the scraper and are always read-only. They are served via `GET /schedules/public`.
 
 ### SOS recomputation
 
@@ -278,17 +290,27 @@ Team {
 
 ### TeamSchedule
 
+The `schedules` table holds two fundamentally different kinds of rows, distinguished by `scheduleType`:
+
+| `scheduleType` | `owner_id` | `isPublic` | Source | Mutable? |
+|---|---|---|---|---|
+| `"reference"` | `"system"` | `true` | Python scraper (ESPN) | No — `403` on any mutation |
+| `"user"` | Cognito `sub` | `false` | User via Import / Estimator | Yes — owner only |
+
 ```typescript
 TeamSchedule {
   id: string
   teamId: string
-  teamName: string
+  teamName: string            // populated at creation time from teams table
+  conference: string          // populated at creation time from teams table
   season: string              // "2025-26"
   games: Game[]
   openDates: string[]         // "YYYY-MM-DD" dates with no game
   strengthOfSchedule: number | null   // server-computed
   sosQuadrantBreakdown: SosQuadrantBreakdown | null
-  ownerId: string             // Cognito sub of the user who created it
+  isPublic: boolean
+  scheduleType: "reference" | "user"
+  owner_id: string            // "system" for reference schedules; Cognito sub for user schedules
   updatedAt: number
 }
 ```

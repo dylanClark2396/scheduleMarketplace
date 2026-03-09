@@ -5,6 +5,12 @@ This file provides guidance to Claude Code when working with code in this reposi
 ## Workflow Rules
 
 - **Never `git push` without explicit user request.** Commit locally when asked, but do not push to remote unless the user specifically asks you to push.
+- **Keep `.docs/ARCHITECTURE.md` up to date.** After any plan is agreed upon and implemented, update `.docs/ARCHITECTURE.md` to reflect the changes — data model fields, route behaviour, guards, and design decisions. Do this before or alongside the commit.
+
+## Docs
+
+Project documentation lives in `.docs/`:
+- `.docs/ARCHITECTURE.md` — full system architecture: data models, routes, SOS logic, infrastructure, deployment flows
 
 ## Overview
 
