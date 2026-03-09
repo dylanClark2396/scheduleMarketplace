@@ -1,0 +1,11 @@
+{
+  "type": "offer",
+  "teamId": "<team-id>",
+  "teamName": "<team-name>",
+  "conference": "ACC",
+  "date": "2026-01-20",
+  "preferredLocation": "home",
+  "targetNetRange": [1, 50],
+  "status": "open",
+  "notes": "API test listing"
+}

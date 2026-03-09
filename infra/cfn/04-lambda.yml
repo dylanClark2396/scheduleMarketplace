@@ -139,7 +139,7 @@ Resources:
     Properties:
       FunctionName: !Sub schedule-marketplace-api-${Environment}
       Description: Schedule Marketplace REST API
-      Runtime: nodejs20.x
+      Runtime: nodejs22.x
       Handler: lambda.handler
       Role: !GetAtt LambdaExecutionRole.Arn
       Timeout: 30
@@ -179,7 +179,7 @@ Resources:
     Properties:
       FunctionName: !Sub schedule-marketplace-import-processor-${Environment}
       Description: Async schedule import processor (Textract / CSV)
-      Runtime: nodejs20.x
+      Runtime: nodejs22.x
       Handler: importProcessor.handler
       Role: !GetAtt LambdaExecutionRole.Arn
       Timeout: 300   # 5 minutes — Textract on large PDFs can be slow
@@ -209,7 +209,7 @@ Resources:
     Properties:
       FunctionName: !Sub schedule-marketplace-scraper-sync-${Environment}
       Description: Loads scraper output from S3 into DynamoDB when files land in the scraper bucket
-      Runtime: nodejs20.x
+      Runtime: nodejs22.x
       Handler: scraperSync.handler
       Role: !GetAtt LambdaExecutionRole.Arn
       Timeout: 60

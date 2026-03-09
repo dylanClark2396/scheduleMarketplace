@@ -1,0 +1,14 @@
+{
+  "games": [
+    {
+      "date": "2026-03-01",
+      "opponentId": "<team-id>",
+      "opponentName": "<team-name>",
+      "opponentNetRanking": 30,
+      "location": "neutral",
+      "isConference": false,
+      "status": "scheduled",
+      "result": null
+    }
+  ]
+}

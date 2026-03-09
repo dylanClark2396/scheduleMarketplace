@@ -1,0 +1,10 @@
+{
+  "date": "2026-01-15",
+  "opponentId": "<team-id>",
+  "opponentName": "<team-name>",
+  "opponentNetRanking": 5,
+  "location": "home",
+  "isConference": true,
+  "status": "scheduled",
+  "result": null
+}

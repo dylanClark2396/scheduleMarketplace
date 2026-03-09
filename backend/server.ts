@@ -29,6 +29,7 @@ import type {
 // =========================
 
 export const app = express()
+app.disable('x-powered-by')
 const ALLOWED_ORIGINS = [
   'http://localhost:5173',
   ...(process.env.APP_DOMAIN ? [process.env.APP_DOMAIN] : []),
@@ -219,7 +220,7 @@ app.post('/teams', requireAuth, async (req: Request, res: Response) => {
   try {
     const team = { id: generateId(), ...req.body as object, updatedAt: Date.now() }
     await putItem(TABLES.teams, team)
-    res.json({ status: 'ok', team })
+    res.status(201).json({ status: 'ok', team })
   } catch (err) {
     console.error(err)
     res.status(500).json({ error: 'Failed to create team' })
@@ -268,7 +269,7 @@ app.post('/schedules', requireAuth, async (req: Request, res: Response) => {
     } as TeamSchedule
     recomputeScheduleStats(schedule)
     await putItem(TABLES.schedules, schedule as unknown as Record<string, unknown>)
-    res.json({ status: 'ok', schedule })
+    res.status(201).json({ status: 'ok', schedule })
   } catch (err) {
     console.error(err)
     res.status(500).json({ error: 'Failed to create schedule' })
@@ -290,6 +291,19 @@ app.patch('/schedules/:id', requireAuth, async (req: Request, res: Response) => 
   }
 })
 
+app.delete('/schedules/:id', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const schedule = await getItem<TeamSchedule>(TABLES.schedules, { id: req.params['id'] as string })
+    if (!schedule) return res.status(404).json({ error: 'Schedule not found' })
+    if (schedule.owner_id !== req.user!.sub) return res.status(403).json({ error: 'Forbidden' })
+    await dynamo.send(new DeleteCommand({ TableName: TABLES.schedules, Key: { id: req.params['id'] as string } }))
+    res.json({ status: 'ok' })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Failed to delete schedule' })
+  }
+})
+
 // =========================
 // GAMES (nested under schedule)
 // =========================
@@ -300,13 +314,18 @@ app.post('/schedules/:scheduleId/games', requireAuth, async (req: Request, res: 
     if (!schedule) return res.status(404).json({ error: 'Schedule not found' })
     if (schedule.owner_id !== req.user!.sub) return res.status(403).json({ error: 'Forbidden' })
 
-    const game: Game = { id: generateId(), ...req.body as Omit<Game, 'id'> }
+    const body = req.body as Partial<Game>
+    if (!body.date || !body.opponentId || !body.location || !body.status) {
+      return res.status(400).json({ error: 'date, opponentId, location, and status are required' })
+    }
+
+    const game: Game = { id: generateId(), ...body as Omit<Game, 'id'> }
     schedule.games = schedule.games ?? []
     schedule.games.push(game)
     recomputeScheduleStats(schedule)
     schedule.updatedAt = Date.now()
     await putItem(TABLES.schedules, schedule as unknown as Record<string, unknown>)
-    res.json({ status: 'ok', game })
+    res.status(201).json({ status: 'ok', game, strengthOfSchedule: schedule.strengthOfSchedule })
   } catch (err) {
     console.error(err)
     res.status(500).json({ error: 'Failed to add game' })
@@ -325,7 +344,7 @@ app.patch('/schedules/:scheduleId/games/:gameId', requireAuth, async (req: Reque
     recomputeScheduleStats(schedule)
     schedule.updatedAt = Date.now()
     await putItem(TABLES.schedules, schedule as unknown as Record<string, unknown>)
-    res.json({ status: 'ok', game })
+    res.json({ status: 'ok', game, strengthOfSchedule: schedule.strengthOfSchedule })
   } catch (err) {
     console.error(err)
     res.status(500).json({ error: 'Failed to update game' })
@@ -378,7 +397,7 @@ app.post('/marketplace', requireAuth, async (req: Request, res: Response) => {
       createdAt: Date.now(),
     }
     await putItem(TABLES.marketplace, listing as unknown as Record<string, unknown>)
-    res.json({ status: 'ok', listing })
+    res.status(201).json({ status: 'ok', listing })
   } catch (err) {
     console.error(err)
     res.status(500).json({ error: 'Failed to create listing' })
@@ -390,7 +409,12 @@ app.patch('/marketplace/:id', requireAuth, async (req: Request, res: Response) =
     const listing = await getItem<MarketplaceListing>(TABLES.marketplace, { id: req.params['id'] as string })
     if (!listing) return res.status(404).json({ error: 'Listing not found' })
     if (listing.ownerId !== req.user!.sub) return res.status(403).json({ error: 'Forbidden' })
-    Object.assign(listing, req.body)
+    const { date, preferredLocation, targetNetRange, status, notes } = req.body as Partial<MarketplaceListing>
+    if (date !== undefined) listing.date = date
+    if (preferredLocation !== undefined) listing.preferredLocation = preferredLocation
+    if (targetNetRange !== undefined) listing.targetNetRange = targetNetRange
+    if (status !== undefined) listing.status = status
+    if (notes !== undefined) listing.notes = notes
     await putItem(TABLES.marketplace, listing as unknown as Record<string, unknown>)
     res.json({ status: 'ok', listing })
   } catch (err) {
@@ -404,6 +428,15 @@ app.delete('/marketplace/:id', requireAuth, async (req: Request, res: Response) 
     const listing = await getItem<MarketplaceListing>(TABLES.marketplace, { id: req.params['id'] as string })
     if (!listing) return res.status(404).json({ error: 'Listing not found' })
     if (listing.ownerId !== req.user!.sub) return res.status(403).json({ error: 'Forbidden' })
+    // Clean up paired listing's matchedListingId if this was matched
+    if (listing.matchedListingId) {
+      const paired = await getItem<MarketplaceListing>(TABLES.marketplace, { id: listing.matchedListingId })
+      if (paired) {
+        paired.status = 'open'
+        paired.matchedListingId = null
+        await putItem(TABLES.marketplace, paired as unknown as Record<string, unknown>)
+      }
+    }
     await dynamo.send(new DeleteCommand({ TableName: TABLES.marketplace, Key: { id: req.params['id'] as string } }))
     res.json({ status: 'ok' })
   } catch (err) {
@@ -557,4 +590,18 @@ app.get('/admin/scraper/status', requireAuth, (_req: Request, res: Response) => 
 
 app.post('/admin/sync', requireAuth, (_req: Request, res: Response) => {
   res.json({ status: 'ok', message: 'Sync queued' })
+})
+
+// =========================
+// CATCH-ALL / ERROR HANDLERS
+// =========================
+
+app.use((_req: Request, res: Response) => {
+  res.status(404).json({ error: 'Not found' })
+})
+
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
+  console.error(err)
+  res.status(500).json({ error: 'Internal server error' })
 })
