@@ -65,10 +65,6 @@
   .p-datatable-wrapper {
     overflow-x: auto;
   }
-
-  .p-datatable {
-    min-width: 480px;
-  }
 }
 
 /* ── PrimeVue form inputs — full width inside dialogs on mobile ───── */

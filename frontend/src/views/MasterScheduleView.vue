@@ -58,18 +58,23 @@
             <span v-else class="muted">—</span>
           </template>
         </Column>
-        <Column v-for="q in [1,2,3,4]" :key="q" :header="`Q${q} W-L`">
-          <template #body="{ data }">
-            <span v-if="data.sosQuadrantBreakdown">
-              {{ data.sosQuadrantBreakdown[`q${q}Wins`] }}-{{ data.sosQuadrantBreakdown[`q${q}Losses`] }}
-            </span>
-          </template>
-        </Column>
-        <Column header="Open Dates">
-          <template #body="{ data }">
-            <Tag :value="(data.openDates?.length ?? 0).toString()" severity="warn" />
-          </template>
-        </Column>
+
+        <!-- Q1-Q4 and Open Dates hidden on mobile — too many columns -->
+        <template v-if="!isMobile">
+          <Column v-for="q in [1,2,3,4]" :key="q" :header="`Q${q} W-L`">
+            <template #body="{ data }">
+              <span v-if="data.sosQuadrantBreakdown">
+                {{ data.sosQuadrantBreakdown[`q${q}Wins`] }}-{{ data.sosQuadrantBreakdown[`q${q}Losses`] }}
+              </span>
+            </template>
+          </Column>
+          <Column header="Open Dates">
+            <template #body="{ data }">
+              <Tag :value="(data.openDates?.length ?? 0).toString()" severity="warn" />
+            </template>
+          </Column>
+        </template>
+
         <Column header="Games" style="width: 4rem">
           <template #body="{ data }">{{ data.gameCount ?? data.games?.length ?? 0 }}</template>
         </Column>
@@ -87,23 +92,26 @@
               <Column field="location" header="Loc">
                 <template #body="{ data: g }">{{ LOCATION_LABELS[g.location] }}</template>
               </Column>
-              <Column header="Q">
-                <template #body="{ data: g }">
-                  <Tag
-                    v-if="g.opponentNetRanking"
-                    :value="`Q${getQuadrant(g.opponentNetRanking, g.location)}`"
-                    :style="{ background: QUADRANT_COLORS[getQuadrant(g.opponentNetRanking, g.location)] }"
-                  />
-                </template>
-              </Column>
+              <!-- Q and Conf hidden on mobile -->
+              <template v-if="!isMobile">
+                <Column header="Q">
+                  <template #body="{ data: g }">
+                    <Tag
+                      v-if="g.opponentNetRanking"
+                      :value="`Q${getQuadrant(g.opponentNetRanking, g.location)}`"
+                      :style="{ background: QUADRANT_COLORS[getQuadrant(g.opponentNetRanking, g.location)] }"
+                    />
+                  </template>
+                </Column>
+                <Column field="isConference" header="Conf">
+                  <template #body="{ data: g }">
+                    <i v-if="g.isConference" class="pi pi-check" style="color: var(--p-green-500)" />
+                  </template>
+                </Column>
+              </template>
               <Column field="result" header="Result">
                 <template #body="{ data: g }">
                   <Tag v-if="g.result" :value="g.result" :severity="g.result === 'W' ? 'success' : 'danger'" />
-                </template>
-              </Column>
-              <Column field="isConference" header="Conf">
-                <template #body="{ data: g }">
-                  <i v-if="g.isConference" class="pi pi-check" style="color: var(--p-green-500)" />
                 </template>
               </Column>
             </DataTable>
@@ -115,7 +123,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import NavBar from '@/components/NavBar.vue'
 import { useApi } from '@/composables/useApi'
 import { getQuadrant } from '@/utils/sosCalculator'
@@ -130,6 +138,12 @@ const loading = ref(false)
 const filterConference = ref('All')
 const filterSeason = ref<string>(SEASONS[1] ?? '')
 const searchQuery = ref('')
+
+// Reactive mobile breakpoint — hides Q/OpenDates columns below 640px
+const isMobile = ref(window.innerWidth <= 640)
+function onResize() { isMobile.value = window.innerWidth <= 640 }
+onMounted(() => window.addEventListener('resize', onResize))
+onUnmounted(() => window.removeEventListener('resize', onResize))
 
 const filteredSchedules = computed(() => {
   return schedules.value.filter(s => {
@@ -217,18 +231,12 @@ async function onRowExpand(event: { data: TeamSchedule }) {
 .schedule-expansion {
   padding: 1rem 2rem;
   background: var(--p-surface-50);
-  overflow-x: auto;
 }
 
 @media (max-width: 640px) {
   .schedule-expansion {
-    padding: 0.75rem 0.5rem;
+    padding: 0.75rem 0.25rem;
   }
-}
-
-/* Allow outer DataTable to scroll horizontally on mobile */
-:deep(.p-datatable-wrapper) {
-  overflow-x: auto;
 }
 
 .loading-center {
