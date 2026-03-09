@@ -235,6 +235,7 @@ Resources:
             Resource:
               - !Sub arn:aws:apigateway:${AWS::Region}::/apis
               - !Sub arn:aws:apigateway:${AWS::Region}::/apis/*
+              - !Sub arn:aws:apigateway:${AWS::Region}::/tags/*
 
           # CloudFront — project distributions only
           # (distribution ID unknown at policy creation time, so scoped broadly but actions limited)
