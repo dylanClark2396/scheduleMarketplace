@@ -257,7 +257,7 @@
     </div>
 
     <!-- Add Game Dialog -->
-    <Dialog v-model:visible="showAddGame" header="Add Game" :style="{ width: '480px' }" modal>
+    <Dialog v-model:visible="showAddGame" header="Add Game" :style="{ width: 'min(480px, 92vw)' }" modal>
       <div class="add-game-form">
         <div class="field">
           <label>Date</label>
@@ -497,6 +497,19 @@ async function removeGame(gameId: string) {
   grid-template-columns: 380px 1fr;
   gap: 1.5rem;
   align-items: start;
+}
+
+@media (max-width: 900px) {
+  .estimator-body {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .control-group {
+    min-width: 0;
+    width: 100%;
+  }
 }
 
 .estimator-main {

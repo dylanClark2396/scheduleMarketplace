@@ -1,0 +1,84 @@
+/*
+ * Global mobile-responsive overrides
+ * Breakpoints:
+ *   sm:  640px  — stack two-column layouts
+ *   md:  768px  — stack wide grids / estimator sidebar
+ *   lg:  1024px — desktop layouts kick in fully
+ *
+ * These rules target shared class names used across multiple views.
+ * Component-specific overrides live in each component's <style scoped> block.
+ */
+
+/* ── Box model baseline ─────────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+/* ── Shared page layout ──────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .page-content {
+    padding: 1rem !important;
+  }
+
+  .page-header {
+    flex-wrap: wrap;
+    gap: 0.5rem !important;
+  }
+
+  .page-header h1 {
+    font-size: 1.3rem !important;
+  }
+}
+
+/* ── Shared filter rows ──────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .filters-row {
+    flex-direction: column;
+    align-items: stretch !important;
+  }
+
+  .filter-group {
+    width: 100%;
+  }
+
+  .filter-group .p-select,
+  .filter-group .p-inputtext,
+  .filter-group .p-autocomplete {
+    width: 100% !important;
+  }
+}
+
+/* ── Shared empty states ─────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .empty-state {
+    padding: 2rem 1rem !important;
+  }
+}
+
+/* ── PrimeVue Dialog — never wider than viewport ─────────────────── */
+.p-dialog {
+  max-width: 92vw !important;
+}
+
+/* ── PrimeVue DataTable — horizontal scroll on small screens ─────── */
+@media (max-width: 768px) {
+  .p-datatable-wrapper {
+    overflow-x: auto;
+  }
+
+  .p-datatable {
+    min-width: 480px;
+  }
+}
+
+/* ── PrimeVue form inputs — full width inside dialogs on mobile ───── */
+@media (max-width: 640px) {
+  .p-dialog .p-inputtext,
+  .p-dialog .p-select,
+  .p-dialog .p-inputnumber,
+  .p-dialog .p-datepicker,
+  .p-dialog .p-multiselect,
+  .p-dialog .p-textarea {
+    width: 100% !important;
+  }
+}

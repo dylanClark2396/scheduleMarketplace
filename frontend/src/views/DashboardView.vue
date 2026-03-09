@@ -190,6 +190,12 @@ onMounted(async () => {
   margin-bottom: 1.5rem;
 }
 
+@media (max-width: 640px) {
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
 .stat-card {
   display: flex;
   align-items: center;
@@ -223,6 +229,16 @@ onMounted(async () => {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 0.75rem;
+}
+
+@media (max-width: 640px) {
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .quick-actions {
+    grid-template-columns: 1fr;
+  }
 }
 
 .empty-state {

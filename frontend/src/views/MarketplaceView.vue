@@ -69,7 +69,7 @@
     <Dialog
       v-model:visible="showPostDialog"
       header="Post Listing"
-      :style="{ width: '540px' }"
+      :style="{ width: 'min(540px, 92vw)' }"
       modal
     >
       <div class="post-form">
@@ -155,7 +155,7 @@
     <Dialog
       v-model:visible="showRespondDialog"
       header="Respond to Listing"
-      :style="{ width: '400px' }"
+      :style="{ width: 'min(400px, 92vw)' }"
       modal
     >
       <p>Contact {{ respondTarget?.teamName }} about the {{ respondTarget?.date }} opening.</p>
@@ -359,9 +359,23 @@ async function onClose(listing: MarketplaceListing) {
   gap: 0.5rem;
 }
 
+@media (max-width: 640px) {
+  .page-header {
+    flex-wrap: wrap;
+  }
+
+  .range-inputs {
+    flex-wrap: wrap;
+  }
+
+  .range-inputs .p-inputnumber {
+    width: 100%;
+  }
+}
+
 .listings-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr));
   gap: 1rem;
 }
 

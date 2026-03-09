@@ -36,7 +36,7 @@ const { login } = useAuth()
 }
 
 .login-card {
-  width: 380px;
+  width: min(380px, 92vw);
   text-align: center;
 }
 

@@ -322,6 +322,12 @@ async function saveManual() {
   gap: 1.5rem;
 }
 
+@media (max-width: 768px) {
+  .import-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .upload-area {
   display: flex;
   flex-direction: column;
@@ -367,6 +373,18 @@ async function saveManual() {
   grid-template-columns: 1fr 1fr auto auto;
   gap: 0.5rem;
   align-items: center;
+}
+
+@media (max-width: 640px) {
+  .manual-game-row {
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: auto auto;
+  }
+
+  .manual-game-row :last-child {
+    grid-column: 2;
+    justify-self: end;
+  }
 }
 
 .field {

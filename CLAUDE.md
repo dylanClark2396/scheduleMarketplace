@@ -6,6 +6,7 @@ This file provides guidance to Claude Code when working with code in this reposi
 
 - **Never `git push` without explicit user request.** Commit locally when asked, but do not push to remote unless the user specifically asks you to push.
 - **Keep `.docs/ARCHITECTURE.md` up to date.** After any plan is agreed upon and implemented, update `.docs/ARCHITECTURE.md` to reflect the changes — data model fields, route behaviour, guards, and design decisions. Do this before or alongside the commit.
+- **Mobile responsiveness is required.** Every view and component must work on screens as narrow as 320px. Use the breakpoints defined in `src/styles/mobile.css`. When adding new views or components, always include mobile media queries. Grids must stack, dialogs must use `min(Xpx, 92vw)`, tables must scroll horizontally, and the navbar must remain usable at all widths.
 
 ## Docs
 

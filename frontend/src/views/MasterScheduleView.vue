@@ -217,6 +217,18 @@ async function onRowExpand(event: { data: TeamSchedule }) {
 .schedule-expansion {
   padding: 1rem 2rem;
   background: var(--p-surface-50);
+  overflow-x: auto;
+}
+
+@media (max-width: 640px) {
+  .schedule-expansion {
+    padding: 0.75rem 0.5rem;
+  }
+}
+
+/* Allow outer DataTable to scroll horizontally on mobile */
+:deep(.p-datatable-wrapper) {
+  overflow-x: auto;
 }
 
 .loading-center {

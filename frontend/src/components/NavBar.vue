@@ -62,6 +62,31 @@ function handleLogout() {
   z-index: 100;
 }
 
+@media (max-width: 640px) {
+  .navbar {
+    gap: 0;
+    padding: 0 0.75rem;
+  }
+
+  .brand-text {
+    display: none;
+  }
+
+  .navbar-links {
+    gap: 0;
+    justify-content: space-around;
+  }
+
+  .nav-link {
+    padding: 0.4rem 0.6rem;
+    font-size: 0.8rem;
+  }
+
+  .nav-link span {
+    display: none;
+  }
+}
+
 .navbar-brand {
   display: flex;
   align-items: center;

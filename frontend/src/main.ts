@@ -6,6 +6,7 @@ import ConfirmationService from 'primevue/confirmationservice'
 import ToastService from 'primevue/toastservice'
 import Aura from '@primeuix/themes/aura'
 import 'primeicons/primeicons.css'
+import '@/styles/mobile.css'
 
 const app = createApp(App)
 
