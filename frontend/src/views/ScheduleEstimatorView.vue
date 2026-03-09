@@ -146,7 +146,7 @@
                     {{ data.projectedSosIfAdded.toFixed(1) }}
                   </template>
                 </Column>
-                <Column header="">
+                <Column v-if="schedule.scheduleType !== 'reference'" header="">
                   <template #body="{ data }">
                     <Button
                       icon="pi pi-plus"
@@ -166,7 +166,8 @@
           <template #title>
             <div class="schedule-title-row">
               <span>{{ schedule.teamName }} — {{ schedule.season }}</span>
-              <Button icon="pi pi-plus" label="Add Game" size="small" @click="showAddGame = true" />
+              <Tag v-if="schedule.scheduleType === 'reference'" value="Reference (read-only)" severity="secondary" />
+              <Button v-else icon="pi pi-plus" label="Add Game" size="small" @click="showAddGame = true" />
             </div>
           </template>
           <template #content>
@@ -217,7 +218,7 @@
                   <i v-if="data.isConference" class="pi pi-check" style="color: var(--p-green-500)" />
                 </template>
               </Column>
-              <Column header="">
+              <Column v-if="schedule.scheduleType !== 'reference'" header="">
                 <template #body="{ data }">
                   <Button
                     icon="pi pi-trash"

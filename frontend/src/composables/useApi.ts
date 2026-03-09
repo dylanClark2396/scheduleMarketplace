@@ -89,10 +89,19 @@ export function useApi() {
   }
 
   const getTeamSchedule = async (teamId: string, season: string): Promise<TeamSchedule | null> => {
+    // Try user-owned schedule first
     const res = await apiFetch(API_ROUTES.teamSchedule(teamId, season))
-    if (res.status === 404) return null
+    if (!res.status.toString().startsWith('2')) return null
     const items = await safeJson<TeamSchedule[]>(res)
-    return items[0] ?? null
+    if (items[0]) return items[0]
+
+    // Fall back to reference schedule (scraper data) for this team+season
+    const pubRes = await apiFetch(`${API_ROUTES.publicSchedules}?teamId=${encodeURIComponent(teamId)}&season=${encodeURIComponent(season)}`)
+    if (!pubRes.ok) return null
+    const pubItems = await safeJson<TeamSchedule[]>(pubRes)
+    if (!pubItems[0]) return null
+    // Fetch the full schedule (list endpoint strips games)
+    return getPublicSchedule(pubItems[0].id)
   }
 
   const getSchedule = async (id: string): Promise<TeamSchedule> => {

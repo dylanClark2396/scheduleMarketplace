@@ -255,11 +255,12 @@ app.get('/schedules', requireAuth, async (req: Request, res: Response) => {
 
 app.get('/schedules/public', requireAuth, async (req: Request, res: Response) => {
   try {
-    const { season, conference } = req.query as Record<string, string>
+    const { season, conference, teamId } = req.query as Record<string, string>
     let items = await scanTable<TeamSchedule & { conference?: string }>(TABLES.schedules)
     items = items.filter(s => s.scheduleType === 'reference' || String(s.isPublic) === 'true')
     if (season) items = items.filter(s => s.season === season)
     if (conference) items = items.filter(s => s.conference === conference)
+    if (teamId) items = items.filter(s => s.teamId === teamId)
     // Strip games from list response — fetch via /schedules/public/:id on demand
     // Pre-compute record so the list view can show W-L without expanding
     const summaries = items.map(({ games, ...rest }) => {
