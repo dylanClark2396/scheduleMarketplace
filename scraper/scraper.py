@@ -630,6 +630,7 @@ def scrape_schedules_espn(teams: list[dict], season_years: list[int]) -> dict[st
 
             print(f"  [{i}/{len(teams)}] {team['name']}")
             url = ESPN_SCHEDULE_URL.format(team_id=espn_id, season_year=season_year)
+            time.sleep(1.0)  # slower rate for schedule endpoint to avoid throttling
             data = fetch_json(url)
             if not data:
                 continue

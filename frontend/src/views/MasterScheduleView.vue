@@ -57,10 +57,10 @@
             <span v-else class="muted">—</span>
           </template>
         </Column>
-        <Column header="Q1 W-L">
+        <Column v-for="q in [1,2,3,4]" :key="q" :header="`Q${q} W-L`">
           <template #body="{ data }">
             <span v-if="data.sosQuadrantBreakdown">
-              {{ data.sosQuadrantBreakdown.q1Wins }}-{{ data.sosQuadrantBreakdown.q1Losses }}
+              {{ data.sosQuadrantBreakdown[`q${q}Wins`] }}-{{ data.sosQuadrantBreakdown[`q${q}Losses`] }}
             </span>
           </template>
         </Column>

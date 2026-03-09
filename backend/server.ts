@@ -126,8 +126,17 @@ async function scanTable<T>(table: string, filters: Record<string, string> = {})
     params.ExpressionAttributeValues = values
   }
 
-  const result = await dynamo.send(new ScanCommand(params))
-  return (result.Items ?? []) as T[]
+  const items: T[] = []
+  let lastKey: Record<string, unknown> | undefined
+
+  do {
+    if (lastKey) params.ExclusiveStartKey = lastKey
+    const result = await dynamo.send(new ScanCommand(params))
+    items.push(...(result.Items ?? []) as T[])
+    lastKey = result.LastEvaluatedKey as Record<string, unknown> | undefined
+  } while (lastKey)
+
+  return items
 }
 
 // =========================
