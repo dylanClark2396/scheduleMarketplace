@@ -55,6 +55,20 @@ ESPN_TEAM_URL = (
     "https://site.api.espn.com/apis/site/v2/sports/basketball/"
     "mens-college-basketball/teams/{team_id}?enable=roster,projection,stats"
 )
+ESPN_SCHEDULE_URL = (
+    "https://site.api.espn.com/apis/site/v2/sports/basketball/"
+    "mens-college-basketball/teams/{team_id}/schedule?season={season_year}"
+)
+
+# Maps ESPN season year (the year the season ends) to our season label
+SEASON_YEAR_TO_LABEL = {2025: "2024-25", 2026: "2025-26"}
+
+LOCATION_WEIGHTS = {"home": 0.6, "away": 1.4, "neutral": 1.0}
+QUADRANT_THRESHOLDS = {
+    "away":    {"q1": 30,  "q2": 75,  "q3": 135},
+    "neutral": {"q1": 50,  "q2": 100, "q3": 200},
+    "home":    {"q1": 75,  "q2": 135, "q3": 240},
+}
 
 NCAA_RANKINGS_URL = (
     "https://ncaa-api.henrygd.me/rankings/basketball-men/d1/"
@@ -556,6 +570,172 @@ def merge_rankings_into_teams(rankings: list[dict], teams: list[dict]) -> list[d
 
 
 # ========================
+# SOS CALCULATION
+# ========================
+
+def _compute_sos(games: list[dict]) -> float | None:
+    valid = [g for g in games if g.get("opponentNetRanking") and g.get("status") != "cancelled"]
+    if not valid:
+        return None
+    w_sum = sum(g["opponentNetRanking"] * LOCATION_WEIGHTS.get(g["location"], 1.0) for g in valid)
+    w_total = sum(LOCATION_WEIGHTS.get(g["location"], 1.0) for g in valid)
+    return round(w_sum / w_total * 10) / 10
+
+
+def _get_quadrant(net: int, location: str) -> int:
+    t = QUADRANT_THRESHOLDS.get(location, QUADRANT_THRESHOLDS["neutral"])
+    if net <= t["q1"]: return 1
+    if net <= t["q2"]: return 2
+    if net <= t["q3"]: return 3
+    return 4
+
+
+def _build_quadrant_breakdown(games: list[dict]) -> dict:
+    b = {f"q{q}{r}": 0 for q in range(1, 5) for r in ("Wins", "Losses")}
+    for g in games:
+        if g.get("status") != "completed" or not g.get("opponentNetRanking") or not g.get("result"):
+            continue
+        q = _get_quadrant(g["opponentNetRanking"], g["location"])
+        key = f"q{q}{'Wins' if g['result'] == 'W' else 'Losses'}"
+        b[key] += 1
+    return b
+
+
+# ========================
+# ESPN SCHEDULE SCRAPER
+# ========================
+
+def scrape_schedules_espn(teams: list[dict], season_years: list[int]) -> dict[str, list[dict]]:
+    """
+    Fetch per-team game schedules from ESPN for each season year.
+    season_year=2025 → 2024-25 season, season_year=2026 → 2025-26 season.
+    Returns {season_label: [TeamSchedule, ...]}
+    """
+    # Build lookups to resolve opponent ESPN IDs back to our team slugs/NET rankings
+    espn_id_to_team = {str(t["espnId"]): t for t in teams if t.get("espnId")}
+
+    results = {}
+
+    for season_year in season_years:
+        season_label = SEASON_YEAR_TO_LABEL.get(season_year, f"{season_year-1}-{str(season_year)[2:]}")
+        print(f"\n[Schedules] Fetching {season_label} schedules from ESPN ({len(teams)} teams)...")
+        print("  (One request per team — ~2-3 minutes)")
+
+        schedules = []
+
+        for i, team in enumerate(teams, 1):
+            espn_id = str(team.get("espnId", ""))
+            if not espn_id:
+                continue
+
+            print(f"  [{i}/{len(teams)}] {team['name']}")
+            url = ESPN_SCHEDULE_URL.format(team_id=espn_id, season_year=season_year)
+            data = fetch_json(url)
+            if not data:
+                continue
+
+            games = []
+            game_counter = 0
+
+            for event in data.get("events", []):
+                comps = event.get("competitions", [])
+                if not comps:
+                    continue
+                comp = comps[0]
+                competitors = comp.get("competitors", [])
+
+                # Split into this team vs opponent
+                my_comp = next((c for c in competitors if str(c.get("team", {}).get("id", "")) == espn_id), None)
+                opp_comp = next((c for c in competitors if str(c.get("team", {}).get("id", "")) != espn_id), None)
+                if not my_comp or not opp_comp:
+                    continue
+
+                # Location
+                if comp.get("neutralSite", False):
+                    location = "neutral"
+                elif my_comp.get("homeAway") == "home":
+                    location = "home"
+                else:
+                    location = "away"
+
+                # Status
+                status_name = comp.get("status", {}).get("type", {}).get("name", "")
+                completed = comp.get("status", {}).get("type", {}).get("completed", False)
+                if "CANCEL" in status_name or "POSTPONE" in status_name:
+                    status = "cancelled"
+                elif completed:
+                    status = "completed"
+                else:
+                    status = "scheduled"
+
+                # Result & scores
+                result = None
+                home_score = away_score = None
+                if status == "completed":
+                    result = "W" if my_comp.get("winner") else "L"
+                    try:
+                        my_score = int(my_comp.get("score") or 0)
+                        opp_score = int(opp_comp.get("score") or 0)
+                        if location == "home":
+                            home_score, away_score = my_score, opp_score
+                        elif location == "away":
+                            home_score, away_score = opp_score, my_score
+                        else:
+                            home_score, away_score = my_score, opp_score
+                    except (ValueError, TypeError):
+                        pass
+
+                # Opponent info
+                opp_team_obj = opp_comp.get("team", {})
+                opp_espn_id = str(opp_team_obj.get("id", ""))
+                opp_data = espn_id_to_team.get(opp_espn_id)
+                opp_id = opp_data["id"] if opp_data else f"espn-{opp_espn_id}"
+                opp_name = opp_team_obj.get("displayName", opp_team_obj.get("name", "Unknown"))
+                opp_net = opp_data.get("netRanking") if opp_data else None
+
+                # Date (YYYY-MM-DD)
+                raw_date = event.get("date", "")
+                game_date = raw_date[:10] if raw_date else ""
+
+                is_conference = bool(comp.get("conferenceCompetition", False))
+
+                game_counter += 1
+                games.append({
+                    "id": f"{team['id']}-{season_year}-g{game_counter}",
+                    "date": game_date,
+                    "opponentId": opp_id,
+                    "opponentName": opp_name,
+                    "opponentNetRanking": opp_net,
+                    "location": location,
+                    "isConference": is_conference,
+                    "status": status,
+                    "result": result,
+                    "homeScore": home_score,
+                    "awayScore": away_score,
+                })
+
+            schedules.append({
+                "id": f"{team['id']}-{season_label}",
+                "teamId": team["id"],
+                "teamName": team["name"],
+                "conference": team.get("conference", ""),
+                "season": season_label,
+                "games": games,
+                "openDates": [],
+                "strengthOfSchedule": _compute_sos(games),
+                "sosQuadrantBreakdown": _build_quadrant_breakdown(games),
+                "isPublic": True,
+                "owner_id": "system",
+                "updatedAt": int(datetime.now().timestamp() * 1000),
+            })
+
+        results[season_label] = schedules
+        print(f"  Built {len(schedules)} schedules for {season_label}")
+
+    return results
+
+
+# ========================
 # S3 UPLOAD
 # ========================
 
@@ -574,9 +754,9 @@ def main():
     parser = argparse.ArgumentParser(description="Schedule Marketplace Scraper")
     parser.add_argument(
         "--target",
-        choices=["teams", "rankings", "stats", "all"],
+        choices=["teams", "rankings", "stats", "schedules", "all"],
         default="all",
-        help="What to scrape (teams=ESPN bulk list, stats=per-team ESPN stats, rankings=ncaa.com NET)",
+        help="What to scrape (teams=ESPN bulk list, stats=per-team ESPN stats, rankings=ncaa.com NET, schedules=per-team game schedules)",
     )
     parser.add_argument(
         "--upload-s3",
@@ -648,6 +828,21 @@ def main():
             teams_path = save_json(teams, "teams.json")
             if args.upload_s3 and s3_bucket:
                 upload_to_s3(teams_path, s3_bucket, "scraper/teams.json")
+
+    elif args.target == "schedules":
+        teams_file = OUTPUT_DIR / "teams.json"
+        if not teams_file.exists():
+            print("Run --target teams first to create teams.json")
+            return
+        with open(teams_file) as f:
+            teams = json.load(f)
+        # Scrape 2024-25 (season=2025) and 2025-26 (season=2026)
+        season_results = scrape_schedules_espn(teams, [2025, 2026])
+        for season_label, schedules in season_results.items():
+            filename = f"schedules-{season_label}.json"
+            path = save_json(schedules, filename)
+            if args.upload_s3 and s3_bucket:
+                upload_to_s3(path, s3_bucket, f"scraper/{filename}")
 
     print("\nDone!")
 

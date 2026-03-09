@@ -299,7 +299,7 @@ const loadingSuggestions = ref(false)
 const showAddGame = ref(false)
 
 const estimate = computed<SosEstimate | null>(() =>
-  schedule.value ? estimateSos(schedule.value.games) : null
+  schedule.value ? estimateSos(schedule.value.games ?? []) : null
 )
 
 const openDates = computed(() => schedule.value?.openDates ?? [])

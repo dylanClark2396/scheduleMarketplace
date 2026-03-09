@@ -57,6 +57,7 @@ export interface TeamSchedule {
   openDates: string[]
   strengthOfSchedule: number | null
   sosQuadrantBreakdown: SosQuadrantBreakdown | null
+  isPublic: boolean
   ownerId: string
   updatedAt: number
 }

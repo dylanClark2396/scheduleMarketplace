@@ -123,7 +123,7 @@ import type { TeamSchedule, Game } from '@/models'
 
 const api = useApi()
 const schedules = ref<TeamSchedule[]>([])
-const expandedRows = ref<Record<string, boolean>>({})
+const expandedRows = ref<TeamSchedule[]>([])
 const loading = ref(false)
 
 const filterConference = ref('All')
@@ -148,7 +148,7 @@ function gameRecord(games: Game[]): string {
 onMounted(async () => {
   loading.value = true
   try {
-    schedules.value = await api.getSchedules()
+    schedules.value = await api.getPublicSchedules()
   } finally {
     loading.value = false
   }

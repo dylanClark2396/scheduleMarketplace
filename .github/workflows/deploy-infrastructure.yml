@@ -118,8 +118,7 @@ jobs:
                 \"Filter\": {
                   \"Key\": {
                     \"FilterRules\": [
-                      {\"Name\": \"prefix\", \"Value\": \"scraper/\"},
-                      {\"Name\": \"suffix\", \"Value\": \"teams.json\"}
+                      {\"Name\": \"prefix\", \"Value\": \"scraper/\"}
                     ]
                   }
                 }

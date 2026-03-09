@@ -7,6 +7,7 @@ export const API_ROUTES = {
 
   // Schedules
   schedules: `${BASE}/schedules`,
+  publicSchedules: `${BASE}/schedules/public`,
   schedule: (id: string) => `${BASE}/schedules/${id}`,
   teamSchedule: (teamId: string, season: string) =>
     `${BASE}/schedules?teamId=${encodeURIComponent(teamId)}&season=${encodeURIComponent(season)}`,

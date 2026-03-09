@@ -1,5 +1,5 @@
-// scraperSync Lambda — triggered by S3 when scraper uploads teams.json or rankings.json.
-// Reads the file from S3 and batch-writes all records into DynamoDB.
+// scraperSync Lambda — triggered by S3 when scraper uploads files.
+// Handles teams.json → teams table, schedules-*.json → schedules table.
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3'
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb'
 import { DynamoDBDocumentClient, BatchWriteCommand } from '@aws-sdk/lib-dynamodb'
@@ -7,6 +7,7 @@ import type { S3Event } from 'aws-lambda'
 
 const REGION = process.env.AWS_REGION ?? 'us-east-2'
 const TEAMS_TABLE = process.env.TEAMS_TABLE ?? 'teams'
+const SCHEDULES_TABLE = process.env.SCHEDULES_TABLE ?? 'schedules'
 
 const s3 = new S3Client({ region: REGION })
 const dynamo = DynamoDBDocumentClient.from(new DynamoDBClient({ region: REGION }))
@@ -37,6 +38,12 @@ export const handler = async (event: S3Event): Promise<void> => {
       const teams = await readS3Json(bucket, key) as Record<string, unknown>[]
       await batchWrite(TEAMS_TABLE, teams)
       console.log(`Synced ${teams.length} teams to DynamoDB`)
+
+    } else if (key.startsWith('scraper/schedules-') && key.endsWith('.json')) {
+      const schedules = await readS3Json(bucket, key) as Record<string, unknown>[]
+      await batchWrite(SCHEDULES_TABLE, schedules)
+      console.log(`Synced ${schedules.length} schedules from ${key} to DynamoDB`)
+
     } else {
       console.log(`Skipping unrecognized key: ${key}`)
     }

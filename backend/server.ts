@@ -244,6 +244,20 @@ app.get('/schedules', requireAuth, async (req: Request, res: Response) => {
   }
 })
 
+app.get('/schedules/public', async (req: Request, res: Response) => {
+  try {
+    const { season, conference } = req.query as Record<string, string>
+    let items = await scanTable<TeamSchedule & { conference?: string }>(TABLES.schedules)
+    items = items.filter(s => s.isPublic === true)
+    if (season) items = items.filter(s => s.season === season)
+    if (conference) items = items.filter(s => s.conference === conference)
+    res.json(items)
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Failed to fetch public schedules' })
+  }
+})
+
 app.get('/schedules/:id', requireAuth, async (req: Request, res: Response) => {
   try {
     const schedule = await getItem<TeamSchedule>(TABLES.schedules, { id: req.params['id'] as string })

@@ -224,6 +224,7 @@ Resources:
           NODE_ENV: production
           AWS_NODEJS_CONNECTION_REUSE_ENABLED: '1'
           TEAMS_TABLE: !Ref TeamsTable
+          SCHEDULES_TABLE: !Ref SchedulesTable
       Tags:
         - Key: Project
           Value: schedule-marketplace
