@@ -27,16 +27,20 @@ export interface SosQuadrantBreakdown {
   q4Losses: number
 }
 
+export type ScheduleType = 'reference' | 'user'
+
 export interface TeamSchedule {
   id: string
   teamId: string
   teamName: string
+  conference: string
   season: string
   games: Game[]
   openDates: string[]
   strengthOfSchedule: number | null
   sosQuadrantBreakdown: SosQuadrantBreakdown | null
   isPublic: boolean
+  scheduleType: ScheduleType
   owner_id: string
   updatedAt: number
 }

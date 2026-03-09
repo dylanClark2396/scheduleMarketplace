@@ -47,6 +47,8 @@ export interface Game {
   result: GameResult
 }
 
+export type ScheduleType = 'reference' | 'user'
+
 export interface TeamSchedule {
   id: string
   teamId: string
@@ -58,6 +60,7 @@ export interface TeamSchedule {
   strengthOfSchedule: number | null
   sosQuadrantBreakdown: SosQuadrantBreakdown | null
   isPublic: boolean
+  scheduleType: ScheduleType
   ownerId: string
   updatedAt: number
   // Pre-computed summary fields (list endpoint only, not present after row expand)

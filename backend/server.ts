@@ -257,7 +257,7 @@ app.get('/schedules/public', requireAuth, async (req: Request, res: Response) =>
   try {
     const { season, conference } = req.query as Record<string, string>
     let items = await scanTable<TeamSchedule & { conference?: string }>(TABLES.schedules)
-    items = items.filter(s => s.isPublic === true)
+    items = items.filter(s => s.scheduleType === 'reference' || String(s.isPublic) === 'true')
     if (season) items = items.filter(s => s.season === season)
     if (conference) items = items.filter(s => s.conference === conference)
     // Strip games from list response — fetch via /schedules/public/:id on demand
@@ -278,7 +278,7 @@ app.get('/schedules/public/:id', requireAuth, async (req: Request, res: Response
   try {
     const schedule = await getItem<TeamSchedule>(TABLES.schedules, { id: req.params['id'] as string })
     if (!schedule) return res.status(404).json({ error: 'Schedule not found' })
-    if (!schedule.isPublic) return res.status(403).json({ error: 'Forbidden' })
+    if (schedule.scheduleType !== 'reference' && String(schedule.isPublic) !== 'true') return res.status(403).json({ error: 'Forbidden' })
     res.json(schedule)
   } catch (err) {
     console.error(err)
@@ -301,11 +301,21 @@ app.get('/schedules/:id', requireAuth, async (req: Request, res: Response) => {
 app.post('/schedules', requireAuth, async (req: Request, res: Response) => {
   try {
     const body = req.body as Partial<TeamSchedule>
+    if (!body.teamId) return res.status(400).json({ error: 'teamId is required' })
+
+    const team = await getItem<{ id: string; name: string; conference: string }>(TABLES.teams, { id: body.teamId })
+    if (!team) return res.status(404).json({ error: 'Team not found' })
+
     const schedule: TeamSchedule = {
-      id: generateId(),
       ...body,
+      id: generateId(),
+      teamId: team.id,
+      teamName: team.name,
+      conference: team.conference ?? '',
       games: body.games ?? [],
       openDates: body.openDates ?? [],
+      isPublic: false,
+      scheduleType: 'user',
       owner_id: req.user!.sub,
       updatedAt: Date.now(),
     } as TeamSchedule
@@ -322,6 +332,7 @@ app.patch('/schedules/:id', requireAuth, async (req: Request, res: Response) => 
   try {
     const schedule = await getItem<TeamSchedule>(TABLES.schedules, { id: req.params['id'] as string })
     if (!schedule) return res.status(404).json({ error: 'Schedule not found' })
+    if (schedule.scheduleType === 'reference' || schedule.owner_id === 'system') return res.status(403).json({ error: 'Reference schedules are read-only' })
     if (schedule.owner_id !== req.user!.sub) return res.status(403).json({ error: 'Forbidden' })
     Object.assign(schedule, req.body, { updatedAt: Date.now() })
     recomputeScheduleStats(schedule)
@@ -337,6 +348,7 @@ app.delete('/schedules/:id', requireAuth, async (req: Request, res: Response) =>
   try {
     const schedule = await getItem<TeamSchedule>(TABLES.schedules, { id: req.params['id'] as string })
     if (!schedule) return res.status(404).json({ error: 'Schedule not found' })
+    if (schedule.scheduleType === 'reference' || schedule.owner_id === 'system') return res.status(403).json({ error: 'Reference schedules are read-only' })
     if (schedule.owner_id !== req.user!.sub) return res.status(403).json({ error: 'Forbidden' })
     await dynamo.send(new DeleteCommand({ TableName: TABLES.schedules, Key: { id: req.params['id'] as string } }))
     res.json({ status: 'ok' })
@@ -354,6 +366,7 @@ app.post('/schedules/:scheduleId/games', requireAuth, async (req: Request, res: 
   try {
     const schedule = await getItem<TeamSchedule>(TABLES.schedules, { id: req.params['scheduleId'] as string })
     if (!schedule) return res.status(404).json({ error: 'Schedule not found' })
+    if (schedule.scheduleType === 'reference' || schedule.owner_id === 'system') return res.status(403).json({ error: 'Reference schedules are read-only' })
     if (schedule.owner_id !== req.user!.sub) return res.status(403).json({ error: 'Forbidden' })
 
     const body = req.body as Partial<Game>
@@ -378,6 +391,7 @@ app.patch('/schedules/:scheduleId/games/:gameId', requireAuth, async (req: Reque
   try {
     const schedule = await getItem<TeamSchedule>(TABLES.schedules, { id: req.params['scheduleId'] as string })
     if (!schedule) return res.status(404).json({ error: 'Schedule not found' })
+    if (schedule.scheduleType === 'reference' || schedule.owner_id === 'system') return res.status(403).json({ error: 'Reference schedules are read-only' })
     if (schedule.owner_id !== req.user!.sub) return res.status(403).json({ error: 'Forbidden' })
 
     const game = schedule.games?.find(g => g.id === req.params['gameId'] as string)
@@ -397,6 +411,7 @@ app.delete('/schedules/:scheduleId/games/:gameId', requireAuth, async (req: Requ
   try {
     const schedule = await getItem<TeamSchedule>(TABLES.schedules, { id: req.params['scheduleId'] as string })
     if (!schedule) return res.status(404).json({ error: 'Schedule not found' })
+    if (schedule.scheduleType === 'reference' || schedule.owner_id === 'system') return res.status(403).json({ error: 'Reference schedules are read-only' })
     if (schedule.owner_id !== req.user!.sub) return res.status(403).json({ error: 'Forbidden' })
 
     schedule.games = (schedule.games ?? []).filter(g => g.id !== req.params['gameId'] as string)
@@ -594,15 +609,19 @@ app.post('/import/:id/confirm', requireAuth, async (req: Request, res: Response)
 
     const year = new Date().getFullYear()
     const season = `${year}-${String(year + 1).slice(2)}`
+    const team = await getItem<{ id: string; name: string; conference: string }>(TABLES.teams, { id: job.teamId! })
     const schedule: TeamSchedule = existing[0] ?? {
       id: generateId(),
       teamId: job.teamId,
-      teamName: '',
+      teamName: team?.name ?? '',
+      conference: team?.conference ?? '',
       season,
       games: [],
       openDates: [],
       strengthOfSchedule: null,
       sosQuadrantBreakdown: null,
+      isPublic: false,
+      scheduleType: 'user',
       owner_id: req.user!.sub,
       updatedAt: Date.now(),
     }

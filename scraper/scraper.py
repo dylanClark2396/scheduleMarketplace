@@ -726,6 +726,7 @@ def scrape_schedules_espn(teams: list[dict], season_years: list[int]) -> dict[st
                 "strengthOfSchedule": _compute_sos(games),
                 "sosQuadrantBreakdown": _build_quadrant_breakdown(games),
                 "isPublic": True,
+                "scheduleType": "reference",
                 "owner_id": "system",
                 "updatedAt": int(datetime.now().timestamp() * 1000),
             })
