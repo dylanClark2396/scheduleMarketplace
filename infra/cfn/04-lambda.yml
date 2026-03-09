@@ -47,6 +47,14 @@ Parameters:
     Type: AWS::SSM::Parameter::Value<String>
     Default: /schedule-marketplace/prod/cognito-client-id
 
+  AppDomain:
+    Type: String
+    Default: ''
+    Description: Frontend origin URL (e.g. https://d2poe70xf6gc78.cloudfront.net) for CORS
+
+Conditions:
+  HasAppDomain: !Not [!Equals [!Ref AppDomain, '']]
+
 Resources:
 
   # ---------------------------------------------------------------------------
@@ -156,6 +164,7 @@ Resources:
           MARKETPLACE_TABLE: !Ref MarketplaceTable
           IMPORT_JOBS_TABLE: !Ref ImportJobsTable
           IMPORT_PROCESSOR_FUNCTION_NAME: !Ref ImportProcessorFunction
+          APP_DOMAIN: !If [HasAppDomain, !Ref AppDomain, '']
       Tags:
         - Key: Project
           Value: schedule-marketplace
@@ -240,8 +249,8 @@ Resources:
       ProtocolType: HTTP
       CorsConfiguration:
         AllowOrigins:
-          - https://schedulemarketplace.com
           - http://localhost:5173
+          - !If [HasAppDomain, !Ref AppDomain, !Ref AWS::NoValue]
         AllowMethods:
           - GET
           - POST

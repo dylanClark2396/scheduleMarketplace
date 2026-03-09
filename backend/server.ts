@@ -29,7 +29,11 @@ import type {
 // =========================
 
 export const app = express()
-app.use(cors({ origin: ['https://schedulemarketplace.com', 'http://localhost:5173'] }))
+const ALLOWED_ORIGINS = [
+  'http://localhost:5173',
+  ...(process.env.APP_DOMAIN ? [process.env.APP_DOMAIN] : []),
+]
+app.use(cors({ origin: ALLOWED_ORIGINS }))
 app.use(express.json())
 
 // Extend Express Request to carry the verified Cognito token
