@@ -112,20 +112,163 @@ def _make_short_name(name: str) -> str:
     return parts[-1] if parts else name[:8]
 
 
+# henrygd uses NCAA-style abbreviated school names. These expansions normalize
+# them to full names so they match ESPN display names after mascot stripping.
+_ABBR_EXPANSIONS = [
+    # Geographic abbreviations used in compound directional names
+    (" mich.",      " michigan"),
+    (" ky.",        " kentucky"),
+    (" caro.",      " carolina"),
+    (" ill.",       " illinois"),
+    (" ark.",       " arkansas"),
+    (" wash.",      " washington"),
+    (" conn.",      " connecticut"),
+    (" mo.",        " missouri"),
+    (" colo.",      " colorado"),
+    (" ariz.",      " arizona"),
+    (" fla.",       " florida"),
+    (" tenn.",      " tennessee"),
+    (" ala.",       " alabama"),
+    (" miss.",      " mississippi"),
+    (" la.",        " louisiana"),
+    (" ind.",       " indiana"),
+    (" pa.",        " pennsylvania"),
+    (" ga.",        " georgia"),
+    (" so.",        " southern"),
+    (" val.",       " valley state"),   # "Mississippi Val." → "Mississippi Valley State"
+    # "St." in the middle/end = State; "St." at start = Saint (space-prefixed check)
+    (" st.",        " state"),
+    # Institution-type abbreviations
+    ("col. of ",    "college of "),
+    (" u.",         " university"),
+    # Cal State variants
+    ("cal st. ",    "cal state "),
+    ("csu ",        "cal state "),
+    # Hyphenated state abbreviations
+    ("ark.-",       "arkansas-"),
+    ("se mo.",      "southeast missouri"),
+    # Named exceptions
+    ("app state",           "appalachian state"),
+    ("army west point",     "army"),
+    ("southeastern la.",    "southeastern louisiana"),
+]
+
+# Acronym → full name expansions applied with word boundaries (\b) so they
+# don't corrupt substrings (e.g. "uni" must not match inside "university").
+_ACRONYM_EXPANSIONS: dict[str, str] = {
+    "niu":   "northern illinois",
+    "siue":  "siu edwardsville",
+    "uiw":   "incarnate word",
+    "fdu":   "fairleigh dickinson",
+    "utrgv": "ut rio grande valley",
+    "uni":   "northern iowa",
+    "liu":   "long island university",
+    "etsu":  "east tennessee state",
+    "sfa":   "stephen f austin",
+    "njit":  "new jersey institute technology",
+    "uncw":  "unc wilmington",
+    "lmu":   "loyola marymount",
+    "csun":  "cal state northridge",
+    "usc":   "southern california",
+}
+
+# Normalized ESPN names (after mascot strip) that need explicit remapping because
+# no abbreviation expansion can bridge the gap.
+_CANONICAL_OVERRIDES: dict[str, str] = {
+    "southern miss":        "southern mississippi",      # ESPN omits the period
+    "se louisiana":         "southeastern louisiana",    # abbreviation mismatch
+    "iu indianapolis":      "iu indy",                   # henrygd uses "Indy"
+    "pennsylvania":         "penn",                      # Ivy League Penn
+    "central connecticut":  "central connecticut state", # ESPN drops "State"
+    "charleston":           "college of charleston",     # ESPN omits "College of"
+    "lamar":                "lamar university",          # ESPN: "Lamar Cardinals" → "Lamar"
+    "ul monroe":            "ulm",                       # henrygd abbreviates as "ULM"
+}
+
+# Full ESPN team name overrides (normalized, before stripping) — used when
+# stripping the mascot would yield an ambiguous or wrong short name.
+_FULL_NAME_OVERRIDES: dict[str, str] = {
+    "southern jaguars": "southern university",  # "southern" alone matches too broadly
+}
+
+
+def _normalize_name(name: str) -> str:
+    """
+    Normalize a school name for cross-source matching.
+    Expands common NCAA abbreviations, strips accents, and removes punctuation.
+    """
+    import re, unicodedata
+    s = name.lower().strip()
+
+    # Normalize accented characters (e.g. "José" → "Jose")
+    s = unicodedata.normalize("NFD", s)
+    s = "".join(c for c in s if unicodedata.category(c) != "Mn")
+
+    # Remove parenthetical state/region disambiguators: "(CA)", "(MN)", "(OH)", etc.
+    s = re.sub(r"\s*\([^)]+\)", "", s)
+
+    # Apply substring abbreviation expansions (suffix-style, inherently word-scoped)
+    for abbr, full in _ABBR_EXPANSIONS:
+        s = s.replace(abbr, full)
+
+    # Remove punctuation (keep hyphens for compound names like "arkansas-pine bluff")
+    s = re.sub(r"[.'&,]", "", s)
+
+    # Apply acronym expansions with word boundaries — must run AFTER punctuation
+    # removal so "LIU" becomes "liu" before matching, and "university" is safe
+    for acronym, expansion in _ACRONYM_EXPANSIONS.items():
+        s = re.sub(r"\b" + re.escape(acronym) + r"\b", expansion, s)
+
+    # Collapse whitespace
+    s = " ".join(s.split())
+    return s
+
+
+def _build_lookup(entries: list[dict], name_key: str) -> dict:
+    """Build a normalized-name → entry lookup dict."""
+    return {_normalize_name(e[name_key]): e for e in entries}
+
+
 def _lookup_team(espn_name: str, lookup: dict):
     """
-    Find a team in a dict keyed by NCAA-style names (e.g. 'Western Michigan')
-    given an ESPN display name (e.g. 'Western Michigan Broncos').
+    Find a team in a normalized lookup dict given an ESPN display name.
 
-    Strategy: try progressively shorter prefixes by stripping trailing words
-    (mascots appear at the end). This avoids false partial matches like
-    'Michigan' matching 'Western Michigan Broncos'.
+    - Checks _FULL_NAME_OVERRIDES first (full team name, pre-strip)
+    - Strips trailing words one at a time to remove the mascot
+    - Checks _CANONICAL_OVERRIDES for known ESPN↔NCAA name gaps
+    - Falls back to dehyphenating compound words for qualifiers like "-Minnesota"
     """
-    words = espn_name.lower().split()
+    full_norm = _normalize_name(espn_name)
+
+    # Full-name override before any stripping
+    if full_norm in _FULL_NAME_OVERRIDES:
+        target = _FULL_NAME_OVERRIDES[full_norm]
+        if target in lookup:
+            return lookup[target]
+
+    words = espn_name.split()
     for length in range(len(words), 0, -1):
-        candidate = " ".join(words[:length])
+        candidate = _normalize_name(" ".join(words[:length]))
+
         if candidate in lookup:
             return lookup[candidate]
+
+        # Canonical override (e.g. "pennsylvania" → "penn")
+        override = _CANONICAL_OVERRIDES.get(candidate)
+        if override and override in lookup:
+            return lookup[override]
+
+        # Dehyphenate compound words and re-strip
+        if "-" in candidate:
+            sub_words = candidate.replace("-", " ").split()
+            for sub_len in range(len(sub_words), 0, -1):
+                sub = " ".join(sub_words[:sub_len])
+                if sub in lookup:
+                    return lookup[sub]
+                override = _CANONICAL_OVERRIDES.get(sub)
+                if override and override in lookup:
+                    return lookup[override]
+
     return None
 
 
@@ -308,10 +451,13 @@ def scrape_net_rankings() -> list[dict]:
             if not rank or not team:
                 continue
             rankings.append({
-                "rank": int(rank),
-                "teamName": team,
+                "rank":       int(rank),
+                "teamName":   team,
                 "conference": entry.get("Conf", ""),
-                "record": entry.get("Record", ""),
+                "record":     entry.get("Record", ""),
+                "home":       entry.get("Home", "0-0"),
+                "road":       entry.get("Road", "0-0"),
+                "neutral":    entry.get("Neutral", "0-0"),
             })
 
     if not rankings:
@@ -322,16 +468,15 @@ def scrape_net_rankings() -> list[dict]:
     return rankings
 
 
-def scrape_standings() -> dict[str, dict]:
+def scrape_standings() -> list[dict]:
     """
     Fetch conference standings from ncaa-api.henrygd.me.
-    Returns a dict keyed by lowercase team name:
-      { "duke": { "confWins": 17, "confLosses": 1 }, ... }
+    Returns a flat list of { School, confWins, confLosses } dicts.
     """
     print("\n[Standings] Fetching conference standings from ncaa-api.henrygd.me...")
 
     data = fetch_json(NCAA_STANDINGS_URL)
-    result: dict[str, dict] = {}
+    result = []
 
     if data:
         for conf_block in data.get("data", []):
@@ -339,19 +484,21 @@ def scrape_standings() -> dict[str, dict]:
                 school = entry.get("School", "").strip()
                 if not school:
                     continue
-                result[school.lower()] = {
+                result.append({
+                    "School":     school,
                     "confWins":   _safe_int(entry.get("Conference W", 0)),
                     "confLosses": _safe_int(entry.get("Conference L", 0)),
-                }
+                })
 
     print(f"  Found standings for {len(result)} teams.")
     return result
 
 
-def merge_standings_into_teams(standings: dict[str, dict], teams: list[dict]) -> list[dict]:
+def merge_standings_into_teams(standings: list[dict], teams: list[dict]) -> list[dict]:
     """Apply conference win/loss records to the teams list."""
+    lookup = _build_lookup(standings, "School")
     for team in teams:
-        entry = _lookup_team(team["name"], standings)
+        entry = _lookup_team(team["name"], lookup)
         if entry:
             team["confWins"]   = entry["confWins"]
             team["confLosses"] = entry["confLosses"]
@@ -377,7 +524,7 @@ def merge_rankings_into_teams(rankings: list[dict], teams: list[dict]) -> list[d
 
     confWins/confLosses are handled separately via merge_standings_into_teams.
     """
-    rank_map = {r["teamName"].lower(): r for r in rankings}
+    rank_map = _build_lookup(rankings, "teamName")
 
     for team in teams:
         entry = _lookup_team(team["name"], rank_map)
@@ -390,9 +537,9 @@ def merge_rankings_into_teams(rankings: list[dict], teams: list[dict]) -> list[d
             team["conference"] = entry.get("conference", "")
 
         # Location records from NET rankings are authoritative
-        hw, hl = _parse_wl(entry.get("Home", "0-0"))
-        rw, rl = _parse_wl(entry.get("Road", "0-0"))
-        nw, nl = _parse_wl(entry.get("Neutral", "0-0"))
+        hw, hl = _parse_wl(entry.get("home", "0-0"))
+        rw, rl = _parse_wl(entry.get("road", "0-0"))
+        nw, nl = _parse_wl(entry.get("neutral", "0-0"))
         team["homeWins"]      = hw
         team["homeLosses"]    = hl
         team["awayWins"]      = rw
