@@ -87,9 +87,9 @@ Resources:
       SupportedIdentityProviders:
         - COGNITO
       PreventUserExistenceErrors: ENABLED
-      RefreshTokenValidity: 30
-      AccessTokenValidity: 1
-      IdTokenValidity: 1
+      RefreshTokenValidity: 365
+      AccessTokenValidity: 8
+      IdTokenValidity: 8
       TokenValidityUnits:
         AccessToken: hours
         IdToken: hours

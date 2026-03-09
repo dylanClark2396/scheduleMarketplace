@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code when working with code in this repository.
 
+## Workflow Rules
+
+- **Never `git push` without explicit user request.** Commit locally when asked, but do not push to remote unless the user specifically asks you to push.
+
 ## Overview
 
 Basketball Scheduling Marketplace — a platform for D1 programs to manage schedules, estimate strength of schedule (SOS), and trade open schedule slots.

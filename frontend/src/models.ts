@@ -60,6 +60,10 @@ export interface TeamSchedule {
   isPublic: boolean
   ownerId: string
   updatedAt: number
+  // Pre-computed summary fields (list endpoint only, not present after row expand)
+  wins?: number
+  losses?: number
+  gameCount?: number
 }
 
 export interface SosQuadrantBreakdown {

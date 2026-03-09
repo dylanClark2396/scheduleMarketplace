@@ -71,7 +71,7 @@
           </template>
         </Column>
         <Column header="Games" style="width: 4rem">
-          <template #body="{ data }">{{ data.games?.length ?? 0 }}</template>
+          <template #body="{ data }">{{ data.gameCount ?? data.games?.length ?? 0 }}</template>
         </Column>
 
         <template #expansion="{ data }">

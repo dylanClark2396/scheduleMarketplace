@@ -265,7 +265,7 @@ app.get('/schedules/public', requireAuth, async (req: Request, res: Response) =>
     const summaries = items.map(({ games, ...rest }) => {
       const completed = (games ?? []).filter(g => g.status === 'completed')
       const wins = completed.filter(g => g.result === 'W').length
-      return { ...rest, games: [], wins, losses: completed.length - wins }
+      return { ...rest, games: [], wins, losses: completed.length - wins, gameCount: (games ?? []).length }
     })
     res.json(summaries)
   } catch (err) {
