@@ -261,7 +261,12 @@ app.get('/schedules/public', requireAuth, async (req: Request, res: Response) =>
     if (season) items = items.filter(s => s.season === season)
     if (conference) items = items.filter(s => s.conference === conference)
     // Strip games from list response — fetch via /schedules/public/:id on demand
-    const summaries = items.map(({ games: _g, ...rest }) => ({ ...rest, games: [] }))
+    // Pre-compute record so the list view can show W-L without expanding
+    const summaries = items.map(({ games, ...rest }) => {
+      const completed = (games ?? []).filter(g => g.status === 'completed')
+      const wins = completed.filter(g => g.result === 'W').length
+      return { ...rest, games: [], wins, losses: completed.length - wins }
+    })
     res.json(summaries)
   } catch (err) {
     console.error(err)

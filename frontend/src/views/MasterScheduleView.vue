@@ -47,7 +47,7 @@
         </Column>
         <Column header="Record">
           <template #body="{ data }">
-            {{ gameRecord(data.games) }}
+            {{ data.wins !== undefined ? `${data.wins}-${data.losses}` : gameRecord(data.games) }}
           </template>
         </Column>
         <Column field="strengthOfSchedule" header="SOS" sortable>
