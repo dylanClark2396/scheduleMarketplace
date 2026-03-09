@@ -27,7 +27,7 @@
             </div>
             <div class="filter-group">
               <label>Date From</label>
-              <DatePicker v-model="filterDateFrom" date-format="yy-mm-dd" />
+              <DatePicker v-model="filterDateFrom" date-format="yy-mm-dd" :min-date="filterDateMin" :max-date="filterDateMax" />
             </div>
             <div class="filter-group">
               <label>NET Range</label>
@@ -89,8 +89,13 @@
         </div>
 
         <div class="field">
+          <label>Season *</label>
+          <Select v-model="formSeason" :options="SEASONS" />
+        </div>
+
+        <div class="field">
           <label>Date *</label>
-          <DatePicker v-model="formDate" date-format="yy-mm-dd" />
+          <DatePicker v-model="formDate" date-format="yy-mm-dd" :min-date="formSeasonDateRange.minDate" :max-date="formSeasonDateRange.maxDate" />
         </div>
 
         <div class="field">
@@ -171,7 +176,7 @@ import NavBar from '@/components/NavBar.vue'
 import MarketplacePost from '@/components/MarketplacePost.vue'
 import TeamSearch from '@/components/TeamSearch.vue'
 import { useApi } from '@/composables/useApi'
-import { D1_CONFERENCES } from '@/constants'
+import { D1_CONFERENCES, SEASONS, CURRENT_SEASON, getSeasonDateRange } from '@/constants'
 import type { MarketplaceListing, Team } from '@/models'
 
 const api = useApi()
@@ -212,6 +217,13 @@ const form = ref<Partial<MarketplaceListing>>({
   compensationNotes: '',
   notes: '',
 })
+
+const formSeason = ref<string>(CURRENT_SEASON)
+const formSeasonDateRange = computed(() => getSeasonDateRange(formSeason.value))
+
+// Filter date picker spans the full range of all listed seasons
+const filterDateMin = computed(() => getSeasonDateRange(SEASONS[0] ?? CURRENT_SEASON).minDate)
+const filterDateMax = computed(() => getSeasonDateRange(SEASONS[SEASONS.length - 1] ?? CURRENT_SEASON).maxDate)
 
 const formDate = computed<Date | null>({
   get: () => form.value.date ? new Date(form.value.date + 'T00:00:00') : null,

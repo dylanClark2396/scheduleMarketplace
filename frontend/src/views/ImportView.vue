@@ -74,7 +74,7 @@
               <Divider />
 
               <div v-for="(game, i) in manualGames" :key="i" class="manual-game-row">
-                <DatePicker v-model="game.date" date-format="yy-mm-dd" placeholder="Date" />
+                <DatePicker v-model="game.date" date-format="yy-mm-dd" placeholder="Date" :min-date="manualSeasonDateRange.minDate" :max-date="manualSeasonDateRange.maxDate" />
                 <InputText v-model="game.opponentName" placeholder="Opponent" />
                 <Select v-model="game.location" :options="['home', 'away', 'neutral']" />
                 <Button icon="pi pi-trash" text severity="danger" @click="manualGames.splice(i, 1)" />
@@ -156,11 +156,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import NavBar from '@/components/NavBar.vue'
 import TeamSearch from '@/components/TeamSearch.vue'
 import { useApi } from '@/composables/useApi'
-import { SEASONS } from '@/constants'
+import { SEASONS, getSeasonDateRange } from '@/constants'
 import type { Team, Game } from '@/models'
 import type { ImportSource } from '@/models'
 
@@ -177,7 +177,9 @@ const parseErrors = ref<string[]>([])
 
 const manualTeamId = ref<string | null>(null)
 const manualSeason = ref<string>(SEASONS[1] ?? '')
+const manualSeasonDateRange = computed(() => getSeasonDateRange(manualSeason.value))
 const manualGames = ref<Array<{ date: Date | null; opponentName: string; location: string; isConference: boolean }>>([])
+
 
 onMounted(async () => {
   allTeams.value = await api.getTeams()

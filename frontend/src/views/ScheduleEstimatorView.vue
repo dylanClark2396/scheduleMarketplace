@@ -248,7 +248,7 @@
       <div class="add-game-form">
         <div class="field">
           <label>Date</label>
-          <DatePicker v-model="newGameDate" date-format="yy-mm-dd" />
+          <DatePicker v-model="newGameDate" date-format="yy-mm-dd" :min-date="seasonDateRange.minDate" :max-date="seasonDateRange.maxDate" />
         </div>
         <div class="field">
           <label>Opponent</label>
@@ -282,7 +282,7 @@ import {
   suggestTeamsForTarget,
   getQuadrant,
 } from '@/utils/sosCalculator'
-import { SEASONS, QUADRANT_COLORS, LOCATION_LABELS } from '@/constants'
+import { SEASONS, QUADRANT_COLORS, LOCATION_LABELS, getSeasonDateRange } from '@/constants'
 import type {
   Team, TeamSchedule, SosEstimate, SosTargetSuggestion,
   SosQuadrantBreakdown, Game,
@@ -297,6 +297,8 @@ const schedule = ref<TeamSchedule | null>(null)
 const loadingSchedule = ref(false)
 const loadingSuggestions = ref(false)
 const showAddGame = ref(false)
+
+const seasonDateRange = computed(() => getSeasonDateRange(selectedSeason.value))
 
 const estimate = computed<SosEstimate | null>(() =>
   schedule.value ? estimateSos(schedule.value.games ?? []) : null

@@ -2,6 +2,19 @@ export const CURRENT_SEASON = '2025-26'
 
 export const SEASONS = ['2024-25', '2025-26', '2026-27']
 
+/**
+ * Returns the valid date range for a basketball season string (e.g. "2025-26").
+ * Min: October 1 of the first year (preseason leeway)
+ * Max: April 30 of the second year (tournament leeway)
+ */
+export function getSeasonDateRange(season: string): { minDate: Date; maxDate: Date } {
+  const startYear = parseInt(season.split('-')[0] ?? '2025', 10)
+  return {
+    minDate: new Date(startYear, 9, 1),      // Oct 1
+    maxDate: new Date(startYear + 1, 3, 30), // Apr 30
+  }
+}
+
 export const D1_CONFERENCES = [
   'ACC',
   'American Athletic',
