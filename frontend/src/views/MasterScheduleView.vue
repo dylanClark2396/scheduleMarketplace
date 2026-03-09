@@ -37,6 +37,7 @@
         paginator
         sort-field="teamName"
         :sort-order="1"
+        @row-expand="onRowExpand"
       >
         <Column expander style="width: 3rem" />
         <Column field="teamName" header="Team" sortable>
@@ -153,6 +154,17 @@ onMounted(async () => {
     loading.value = false
   }
 })
+
+async function onRowExpand(event: { data: TeamSchedule }) {
+  if (event.data.games?.length) return  // already loaded
+  try {
+    const full = await api.getPublicSchedule(event.data.id)
+    const idx = schedules.value.findIndex(s => s.id === event.data.id)
+    if (idx !== -1) schedules.value[idx] = full
+  } catch (err) {
+    console.error('Failed to load games for', event.data.teamName, err)
+  }
+}
 </script>
 
 <style scoped>

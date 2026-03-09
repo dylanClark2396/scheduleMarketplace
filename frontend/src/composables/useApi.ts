@@ -49,8 +49,13 @@ export function useApi() {
 
   const getPublicSchedules = async (params?: { season?: string; conference?: string }): Promise<TeamSchedule[]> => {
     const qs = params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : ''
-    const res = await fetch(`${API_ROUTES.publicSchedules}${qs}`)
+    const res = await fetch(`${API_ROUTES.publicSchedules}${qs}`, { headers: { ...authHeaders() } })
     return safeJson<TeamSchedule[]>(res)
+  }
+
+  const getPublicSchedule = async (id: string): Promise<TeamSchedule> => {
+    const res = await fetch(API_ROUTES.publicSchedule(id), { headers: { ...authHeaders() } })
+    return safeJson<TeamSchedule>(res)
   }
 
   const getTeamSchedule = async (teamId: string, season: string): Promise<TeamSchedule | null> => {
@@ -211,6 +216,7 @@ export function useApi() {
     getTeam,
     getSchedules,
     getPublicSchedules,
+    getPublicSchedule,
     getTeamSchedule,
     getSchedule,
     createSchedule,
