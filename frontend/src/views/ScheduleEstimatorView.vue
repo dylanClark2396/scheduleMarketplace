@@ -235,7 +235,19 @@
         </Card>
       </div>
 
-      <!-- Empty state -->
+      <!-- Empty state: searched but no schedule found -->
+      <div v-else-if="!loadingSchedule && searched" class="empty-state">
+        <i class="pi pi-calendar-times" />
+        <p>No schedule found for <strong>{{ selectedTeam?.name }}</strong> — {{ selectedSeason }}</p>
+        <Button
+          label="Create blank schedule"
+          icon="pi pi-plus"
+          :loading="creatingSchedule"
+          @click="createBlankSchedule"
+        />
+      </div>
+
+      <!-- Empty state: nothing selected yet -->
       <div v-else-if="!loadingSchedule" class="empty-state">
         <i class="pi pi-calendar" />
         <p>Select a team and season to view and analyze their schedule</p>
@@ -297,7 +309,9 @@ const selectedSeason = ref<string>(SEASONS[1] ?? '')
 const schedule = ref<TeamSchedule | null>(null)
 const loadingSchedule = ref(false)
 const loadingSuggestions = ref(false)
+const creatingSchedule = ref(false)
 const showAddGame = ref(false)
+const searched = ref(false)
 
 const seasonDateRange = computed(() => getSeasonDateRange(selectedSeason.value))
 
@@ -342,15 +356,30 @@ onMounted(async () => {
 
 function onTeamSelect(team: Team) {
   selectedTeam.value = team
+  schedule.value = null
+  searched.value = false
 }
 
 async function loadSchedule() {
   if (!selectedTeam.value) return
   loadingSchedule.value = true
+  searched.value = false
   try {
     schedule.value = await api.getTeamSchedule(selectedTeam.value.id, selectedSeason.value)
+    searched.value = true
   } finally {
     loadingSchedule.value = false
+  }
+}
+
+async function createBlankSchedule() {
+  if (!selectedTeam.value) return
+  creatingSchedule.value = true
+  try {
+    await api.createSchedule({ teamId: selectedTeam.value.id, season: selectedSeason.value })
+    await loadSchedule()
+  } finally {
+    creatingSchedule.value = false
   }
 }
 
