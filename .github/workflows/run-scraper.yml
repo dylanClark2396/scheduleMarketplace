@@ -68,6 +68,15 @@ jobs:
             --query Parameter.Value --output text)
           echo "scraper_bucket=$SCRAPER_BUCKET" >> $GITHUB_OUTPUT
 
+      - name: Download teams.json from S3 (required for schedules target)
+        if: inputs.target == 'schedules'
+        env:
+          S3_SCRAPER_BUCKET: ${{ steps.ssm.outputs.scraper_bucket }}
+        run: |
+          mkdir -p scraper/output
+          aws s3 cp "s3://$S3_SCRAPER_BUCKET/scraper/teams.json" scraper/output/teams.json
+          echo "Downloaded teams.json ($(wc -l < scraper/output/teams.json) lines)"
+
       - name: Run scraper
         working-directory: scraper
         env:
