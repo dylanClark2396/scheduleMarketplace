@@ -229,8 +229,8 @@ const filteredListings = computed(() => {
   return listings.value.filter(l => {
     if (filterType.value && l.type !== filterType.value) return false
     if (filterConference.value !== 'All' && l.conference !== filterConference.value) return false
-    if (filterNetMin.value && (l.currentNetRanking ?? 999) < filterNetMin.value) return false
-    if (filterNetMax.value && (l.currentNetRanking ?? 0) > filterNetMax.value) return false
+    if (filterNetMin.value && (l.currentNetRanking == null || l.currentNetRanking < filterNetMin.value)) return false
+    if (filterNetMax.value && (l.currentNetRanking == null || l.currentNetRanking > filterNetMax.value)) return false
     return true
   })
 })

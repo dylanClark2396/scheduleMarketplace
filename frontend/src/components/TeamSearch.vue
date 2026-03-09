@@ -2,7 +2,7 @@
   <AutoComplete
     v-model="selected"
     :suggestions="filtered"
-    :field="displayField"
+    :optionLabel="displayField"
     :placeholder="placeholder"
     :loading="loading"
     force-selection
@@ -45,7 +45,7 @@ const loading = ref(false)
 function onSearch(event: { query: string }) {
   const q = event.query.toLowerCase()
   filtered.value = props.teams.filter(
-    t => t.name.toLowerCase().includes(q) || t.shortName?.toLowerCase().includes(q)
+    t => t.name.toLowerCase().includes(q) || (t.shortName?.toLowerCase().includes(q) ?? false)
   ).slice(0, 20)
 }
 

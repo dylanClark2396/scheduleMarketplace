@@ -51,6 +51,7 @@ export interface TeamSchedule {
   id: string
   teamId: string
   teamName: string
+  conference: string
   season: string
   games: Game[]
   openDates: string[]

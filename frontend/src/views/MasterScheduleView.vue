@@ -31,7 +31,7 @@
       <DataTable
         v-else
         :value="filteredSchedules"
-        expandable-row-groups
+        v-model:expandedRows="expandedRows"
         :loading="loading"
         :rows="25"
         paginator
@@ -66,11 +66,11 @@
         </Column>
         <Column header="Open Dates">
           <template #body="{ data }">
-            <Tag :value="data.openDates.length.toString()" severity="warn" />
+            <Tag :value="(data.openDates?.length ?? 0).toString()" severity="warn" />
           </template>
         </Column>
         <Column header="Games" style="width: 4rem">
-          <template #body="{ data }">{{ data.games.length }}</template>
+          <template #body="{ data }">{{ data.games?.length ?? 0 }}</template>
         </Column>
 
         <template #expansion="{ data }">
@@ -123,6 +123,7 @@ import type { TeamSchedule, Game } from '@/models'
 
 const api = useApi()
 const schedules = ref<TeamSchedule[]>([])
+const expandedRows = ref<Record<string, boolean>>({})
 const loading = ref(false)
 
 const filterConference = ref('All')
@@ -131,9 +132,9 @@ const searchQuery = ref('')
 
 const filteredSchedules = computed(() => {
   return schedules.value.filter(s => {
-    if (searchQuery.value && !s.teamName.toLowerCase().includes(searchQuery.value.toLowerCase())) {
-      return false
-    }
+    if (filterSeason.value && s.season !== filterSeason.value) return false
+    if (filterConference.value !== 'All' && s.conference !== filterConference.value) return false
+    if (searchQuery.value && !s.teamName?.toLowerCase().includes(searchQuery.value.toLowerCase())) return false
     return true
   })
 })
