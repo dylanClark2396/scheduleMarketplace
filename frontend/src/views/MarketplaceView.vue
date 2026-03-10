@@ -13,10 +13,10 @@
         <template #content>
           <div class="filters-row">
             <div class="filter-group">
-              <label>Type</label>
+              <label>Deal Type</label>
               <SelectButton
-                v-model="filterType"
-                :options="typeOptions"
+                v-model="filterDealType"
+                :options="dealTypeFilterOptions"
                 option-label="label"
                 option-value="value"
               />
@@ -24,10 +24,6 @@
             <div class="filter-group">
               <label>Conference</label>
               <Select v-model="filterConference" :options="['All', ...D1_CONFERENCES]" />
-            </div>
-            <div class="filter-group">
-              <label>Date From</label>
-              <DatePicker v-model="filterDateFrom" date-format="yy-mm-dd" :min-date="filterDateMin" :max-date="filterDateMax" />
             </div>
             <div class="filter-group">
               <label>NET Range</label>
@@ -69,45 +65,156 @@
     <Dialog
       v-model:visible="showPostDialog"
       header="Post Listing"
-      :style="{ width: 'min(540px, 92vw)' }"
+      :style="{ width: 'min(560px, 92vw)' }"
       modal
     >
       <div class="post-form">
+
+        <!-- Deal Type -->
         <div class="field">
-          <label>Type *</label>
+          <label>Deal Type *</label>
           <SelectButton
-            v-model="form.type"
-            :options="[{ label: 'Request (Need Opponent)', value: 'request' }, { label: 'Offer (Available to Play)', value: 'offer' }]"
+            v-model="form.dealType"
+            :options="dealTypeOptions"
             option-label="label"
             option-value="value"
           />
         </div>
 
+        <!-- Team -->
         <div class="field">
           <label>Your Team *</label>
           <TeamSearch :teams="allTeams" @select="onFormTeamSelect" />
         </div>
 
-        <div class="field">
-          <label>Season *</label>
-          <Select v-model="formSeason" :options="SEASONS" />
-        </div>
+        <!-- Buy Game specific fields -->
+        <template v-if="form.dealType === 'buy-game'">
+          <div class="field">
+            <label>Your Role *</label>
+            <SelectButton
+              v-model="form.role"
+              :options="[
+                { label: 'Host (paying guarantee)', value: 'host' },
+                { label: 'Visitor (receiving guarantee)', value: 'visitor' },
+              ]"
+              option-label="label"
+              option-value="value"
+            />
+          </div>
+          <div class="field-row">
+            <div class="field">
+              <label>Season *</label>
+              <Select v-model="form.season" :options="SEASONS" />
+            </div>
+            <div class="field">
+              <label>Date *</label>
+              <DatePicker
+                v-model="form.date"
+                date-format="yy-mm-dd"
+                :min-date="formSeasonDateRange.minDate"
+                :max-date="formSeasonDateRange.maxDate"
+              />
+            </div>
+          </div>
+          <div class="field-row">
+            <div class="field">
+              <label>Date Flexibility (±days)</label>
+              <InputNumber v-model="form.dateFlexibilityDays" :min="0" :max="14" />
+            </div>
+            <div class="field">
+              <label>Guarantee Amount ($)</label>
+              <InputNumber v-model="form.guaranteeAmount" :min="0" placeholder="e.g. 15000" />
+            </div>
+          </div>
+        </template>
 
-        <div class="field">
-          <label>Date *</label>
-          <DatePicker v-model="formDate" date-format="yy-mm-dd" :min-date="formSeasonDateRange.minDate" :max-date="formSeasonDateRange.maxDate" />
-        </div>
+        <!-- Home-and-Home specific fields -->
+        <template v-else-if="form.dealType === 'home-and-home'">
+          <div class="field">
+            <label>Who Hosts Year 1?</label>
+            <SelectButton
+              v-model="form.hostYear"
+              :options="[
+                { label: 'We host Year 1', value: 'year1' },
+                { label: 'We host Year 2', value: 'year2' },
+                { label: 'Open to either', value: 'either' },
+              ]"
+              option-label="label"
+              option-value="value"
+            />
+          </div>
+          <div class="field-row">
+            <div class="field">
+              <label>Year 1 Season *</label>
+              <Select v-model="form.year1Season" :options="SEASONS" />
+            </div>
+            <div class="field">
+              <label>Year 1 Date (optional)</label>
+              <DatePicker
+                v-model="form.year1Date"
+                date-format="yy-mm-dd"
+                :min-date="year1SeasonRange.minDate"
+                :max-date="year1SeasonRange.maxDate"
+              />
+            </div>
+          </div>
+          <div class="field-row">
+            <div class="field">
+              <label>Year 2 Season *</label>
+              <Select v-model="form.year2Season" :options="SEASONS" />
+            </div>
+            <div class="field">
+              <label>Year 2 Date (optional)</label>
+              <DatePicker
+                v-model="form.year2Date"
+                date-format="yy-mm-dd"
+                :min-date="year2SeasonRange.minDate"
+                :max-date="year2SeasonRange.maxDate"
+              />
+            </div>
+          </div>
+          <div class="field">
+            <label>Date Flexibility (±days)</label>
+            <InputNumber v-model="form.dateFlexibilityDays" :min="0" :max="14" />
+          </div>
+        </template>
 
-        <div class="field">
-          <label>Date Flexibility (days ±)</label>
-          <InputNumber v-model="form.dateFlexibilityDays" :min="0" :max="14" />
-        </div>
+        <!-- Neutral Site specific fields -->
+        <template v-else-if="form.dealType === 'neutral-site'">
+          <div class="field-row">
+            <div class="field">
+              <label>Season *</label>
+              <Select v-model="form.season" :options="SEASONS" />
+            </div>
+            <div class="field">
+              <label>Date *</label>
+              <DatePicker
+                v-model="form.date"
+                date-format="yy-mm-dd"
+                :min-date="formSeasonDateRange.minDate"
+                :max-date="formSeasonDateRange.maxDate"
+              />
+            </div>
+          </div>
+          <div class="field-row">
+            <div class="field">
+              <label>Venue Name</label>
+              <InputText v-model="form.venueName" placeholder="e.g. Madison Square Garden" />
+            </div>
+            <div class="field">
+              <label>Venue City</label>
+              <InputText v-model="form.venueCity" placeholder="e.g. New York, NY" />
+            </div>
+          </div>
+          <div class="field">
+            <label>Date Flexibility (±days)</label>
+            <InputNumber v-model="form.dateFlexibilityDays" :min="0" :max="14" />
+          </div>
+        </template>
 
-        <div class="field">
-          <label>Preferred Location</label>
-          <Select v-model="form.preferredLocation" :options="locationOptions" option-label="label" option-value="value" />
-        </div>
+        <Divider />
 
+        <!-- Common targeting fields -->
         <div class="field">
           <label>Target NET Range</label>
           <div class="range-inputs">
@@ -129,14 +236,10 @@
         </div>
 
         <div class="field">
-          <label>Compensation / Game Fee Notes</label>
-          <InputText v-model="form.compensationNotes" placeholder="e.g., $15,000 guarantee" />
+          <label>Notes</label>
+          <Textarea v-model="form.notes" rows="2" placeholder="Any special requirements..." />
         </div>
 
-        <div class="field">
-          <label>Additional Notes</label>
-          <Textarea v-model="form.notes" rows="3" placeholder="Any special requirements..." />
-        </div>
       </div>
 
       <template #footer>
@@ -145,7 +248,7 @@
           label="Post Listing"
           icon="pi pi-check"
           :loading="posting"
-          :disabled="!form.teamId || !form.date"
+          :disabled="!canSubmit"
           @click="submitListing"
         />
       </template>
@@ -154,13 +257,16 @@
     <!-- Respond Dialog -->
     <Dialog
       v-model:visible="showRespondDialog"
-      header="Respond to Listing"
+      header="Express Interest"
       :style="{ width: 'min(400px, 92vw)' }"
       modal
     >
-      <p>Contact {{ respondTarget?.teamName }} about the {{ respondTarget?.date }} opening.</p>
+      <p>
+        Send interest to <strong>{{ respondTarget?.teamName }}</strong> about their
+        {{ respondTarget ? DEAL_TYPE_LABELS[respondTarget.dealType] : '' }} listing.
+      </p>
       <p class="respond-note">
-        In a production app this would send a notification to both parties and create a match.
+        In a production app this would notify both parties and create a match record.
       </p>
       <template #footer>
         <Button label="Cancel" text @click="showRespondDialog = false" />
@@ -176,8 +282,8 @@ import NavBar from '@/components/NavBar.vue'
 import MarketplacePost from '@/components/MarketplacePost.vue'
 import TeamSearch from '@/components/TeamSearch.vue'
 import { useApi } from '@/composables/useApi'
-import { D1_CONFERENCES, SEASONS, CURRENT_SEASON, getSeasonDateRange } from '@/constants'
-import type { MarketplaceListing, Team } from '@/models'
+import { D1_CONFERENCES, SEASONS, CURRENT_SEASON, getSeasonDateRange, DEAL_TYPE_LABELS } from '@/constants'
+import type { MarketplaceListing, DealType, BuyGameRole, HomeAndHomeHostYear, Team } from '@/models'
 
 const api = useApi()
 
@@ -190,56 +296,67 @@ const showPostDialog = ref(false)
 const showRespondDialog = ref(false)
 const respondTarget = ref<MarketplaceListing | null>(null)
 
-const filterType = ref<string | null>(null)
+const filterDealType = ref<DealType | null>(null)
 const filterConference = ref('All')
-const filterDateFrom = ref<Date | null>(null)
 const filterNetMin = ref<number | null>(null)
 const filterNetMax = ref<number | null>(null)
 
-const typeOptions = [
+const dealTypeFilterOptions = [
   { label: 'All', value: null },
-  { label: 'Requests', value: 'request' },
-  { label: 'Offers', value: 'offer' },
+  { label: 'Buy Game', value: 'buy-game' },
+  { label: 'Home-and-Home', value: 'home-and-home' },
+  { label: 'Neutral Site', value: 'neutral-site' },
 ]
 
-const locationOptions = [
-  { label: 'Any', value: 'any' },
-  { label: 'Home', value: 'home' },
-  { label: 'Away', value: 'away' },
-  { label: 'Neutral', value: 'neutral' },
+const dealTypeOptions = [
+  { label: 'Buy Game', value: 'buy-game' },
+  { label: 'Home-and-Home', value: 'home-and-home' },
+  { label: 'Neutral Site', value: 'neutral-site' },
 ]
 
-const form = ref<Partial<MarketplaceListing>>({
-  type: 'request',
-  dateFlexibilityDays: 0,
-  preferredLocation: 'any',
-  targetConferences: [],
-  compensationNotes: '',
+const form = ref({
+  dealType: 'buy-game' as DealType,
+  teamId: '',
+  teamName: '',
+  conference: '',
+  currentNetRanking: null as number | null,
+  targetNetMin: null as number | null,
+  targetNetMax: null as number | null,
+  targetConferences: [] as string[],
   notes: '',
+  // Buy Game + Neutral Site
+  date: null as Date | null,
+  season: CURRENT_SEASON,
+  dateFlexibilityDays: 0,
+  // Buy Game specific
+  role: 'host' as BuyGameRole,
+  guaranteeAmount: null as number | null,
+  // Home-and-Home specific
+  hostYear: 'either' as HomeAndHomeHostYear,
+  year1Season: CURRENT_SEASON,
+  year2Season: SEASONS[2] ?? CURRENT_SEASON,
+  year1Date: null as Date | null,
+  year2Date: null as Date | null,
+  // Neutral Site specific
+  venueName: '',
+  venueCity: '',
 })
 
-const formSeason = ref<string>(CURRENT_SEASON)
-const formSeasonDateRange = computed(() => getSeasonDateRange(formSeason.value))
+const formSeasonDateRange = computed(() => getSeasonDateRange(form.value.season))
+const year1SeasonRange = computed(() => getSeasonDateRange(form.value.year1Season))
+const year2SeasonRange = computed(() => getSeasonDateRange(form.value.year2Season))
 
-// Filter date picker spans the full range of all listed seasons
-const filterDateMin = computed(() => getSeasonDateRange(SEASONS[0] ?? CURRENT_SEASON).minDate)
-const filterDateMax = computed(() => getSeasonDateRange(SEASONS[SEASONS.length - 1] ?? CURRENT_SEASON).maxDate)
-
-const formDate = computed<Date | null>({
-  get: () => form.value.date ? new Date(form.value.date + 'T00:00:00') : null,
-  set: (d) => { form.value.date = d ? d.toISOString().slice(0, 10) : undefined },
+const canSubmit = computed(() => {
+  if (!form.value.teamId) return false
+  if (form.value.dealType === 'buy-game' || form.value.dealType === 'neutral-site') {
+    if (!form.value.date) return false
+  }
+  return true
 })
-
-function onFormTeamSelect(t: Team) {
-  form.value.teamId = t.id
-  form.value.teamName = t.name
-  form.value.conference = t.conference
-  form.value.currentNetRanking = t.netRanking
-}
 
 const filteredListings = computed(() => {
   return listings.value.filter(l => {
-    if (filterType.value && l.type !== filterType.value) return false
+    if (filterDealType.value && l.dealType !== filterDealType.value) return false
     if (filterConference.value !== 'All' && l.conference !== filterConference.value) return false
     if (filterNetMin.value && (l.currentNetRanking == null || l.currentNetRanking < filterNetMin.value)) return false
     if (filterNetMax.value && (l.currentNetRanking == null || l.currentNetRanking > filterNetMax.value)) return false
@@ -261,32 +378,101 @@ onMounted(async () => {
   }
 })
 
+function onFormTeamSelect(t: Team) {
+  form.value.teamId = t.id
+  form.value.teamName = t.name
+  form.value.conference = t.conference
+  form.value.currentNetRanking = t.netRanking
+}
+
 function clearFilters() {
-  filterType.value = null
+  filterDealType.value = null
   filterConference.value = 'All'
-  filterDateFrom.value = null
   filterNetMin.value = null
   filterNetMax.value = null
+}
+
+function resetForm() {
+  form.value = {
+    dealType: 'buy-game',
+    teamId: '',
+    teamName: '',
+    conference: '',
+    currentNetRanking: null,
+    targetNetMin: null,
+    targetNetMax: null,
+    targetConferences: [],
+    notes: '',
+    date: null,
+    season: CURRENT_SEASON,
+    dateFlexibilityDays: 0,
+    role: 'host',
+    guaranteeAmount: null,
+    hostYear: 'either',
+    year1Season: CURRENT_SEASON,
+    year2Season: SEASONS[2] ?? CURRENT_SEASON,
+    year1Date: null,
+    year2Date: null,
+    venueName: '',
+    venueCity: '',
+  }
 }
 
 async function submitListing() {
   posting.value = true
   try {
-    const listing = await api.createListing({
-      ...form.value,
-      status: 'open',
+    const base = {
+      teamId: form.value.teamId,
+      teamName: form.value.teamName,
+      conference: form.value.conference,
+      currentNetRanking: form.value.currentNetRanking,
+      targetNetMin: form.value.targetNetMin,
+      targetNetMax: form.value.targetNetMax,
+      targetConferences: form.value.targetConferences,
+      notes: form.value.notes,
+      status: 'open' as const,
       expiresAt: Date.now() + 30 * 24 * 60 * 60 * 1000,
-    })
+    }
+
+    let payload: Partial<MarketplaceListing>
+
+    if (form.value.dealType === 'buy-game') {
+      payload = {
+        ...base,
+        dealType: 'buy-game',
+        role: form.value.role,
+        date: form.value.date!.toISOString().slice(0, 10),
+        dateFlexibilityDays: form.value.dateFlexibilityDays,
+        season: form.value.season,
+        guaranteeAmount: form.value.guaranteeAmount,
+      }
+    } else if (form.value.dealType === 'home-and-home') {
+      payload = {
+        ...base,
+        dealType: 'home-and-home',
+        hostYear: form.value.hostYear,
+        year1Season: form.value.year1Season,
+        year2Season: form.value.year2Season,
+        year1Date: form.value.year1Date?.toISOString().slice(0, 10) ?? null,
+        year2Date: form.value.year2Date?.toISOString().slice(0, 10) ?? null,
+        dateFlexibilityDays: form.value.dateFlexibilityDays,
+      }
+    } else {
+      payload = {
+        ...base,
+        dealType: 'neutral-site',
+        date: form.value.date!.toISOString().slice(0, 10),
+        dateFlexibilityDays: form.value.dateFlexibilityDays,
+        season: form.value.season,
+        venueName: form.value.venueName || null,
+        venueCity: form.value.venueCity || null,
+      }
+    }
+
+    const listing = await api.createListing(payload)
     listings.value.unshift(listing)
     showPostDialog.value = false
-    form.value = {
-      type: 'request',
-      dateFlexibilityDays: 0,
-      preferredLocation: 'any',
-      targetConferences: [],
-      compensationNotes: '',
-      notes: '',
-    }
+    resetForm()
   } finally {
     posting.value = false
   }
@@ -411,6 +597,18 @@ async function onClose(listing: MarketplaceListing) {
 .field label {
   font-weight: 600;
   font-size: 0.85rem;
+}
+
+.field-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+@media (max-width: 480px) {
+  .field-row {
+    grid-template-columns: 1fr;
+  }
 }
 
 .respond-note {

@@ -85,7 +85,10 @@ export function useApi() {
 
   const getPublicSchedule = async (id: string): Promise<TeamSchedule> => {
     const res = await apiFetch(API_ROUTES.publicSchedule(id))
-    return safeJson<TeamSchedule>(res)
+    const s = await safeJson<TeamSchedule>(res)
+    // Guarantee read-only flag regardless of what the DB stored
+    s.scheduleType = 'reference'
+    return s
   }
 
   const getTeamSchedule = async (teamId: string, season: string): Promise<TeamSchedule | null> => {
@@ -100,7 +103,7 @@ export function useApi() {
     if (!pubRes.ok) return null
     const pubItems = await safeJson<TeamSchedule[]>(pubRes)
     if (!pubItems[0]) return null
-    // Fetch the full schedule (list endpoint strips games)
+    // Fetch the full schedule (list endpoint strips games); scheduleType is forced to 'reference' inside getPublicSchedule
     return getPublicSchedule(pubItems[0].id)
   }
 
@@ -160,7 +163,7 @@ export function useApi() {
 
   const getListings = async (params?: {
     status?: string
-    type?: string
+    dealType?: string
     conference?: string
   }): Promise<MarketplaceListing[]> => {
     const qs = params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : ''

@@ -82,3 +82,20 @@ export const QUADRANT_LABELS: Record<number, string> = {
   3: 'Q3',
   4: 'Q4',
 }
+
+export const DEAL_TYPE_LABELS: Record<string, string> = {
+  'buy-game': 'Buy Game',
+  'home-and-home': 'Home-and-Home',
+  'neutral-site': 'Neutral Site',
+}
+
+export const BUY_GAME_ROLE_LABELS: Record<string, string> = {
+  host: 'Host (paying guarantee)',
+  visitor: 'Visitor (receiving guarantee)',
+}
+
+export const HOME_AND_HOME_HOST_YEAR_LABELS: Record<string, string> = {
+  year1: 'We host Year 1, away Year 2',
+  year2: 'Away Year 1, we host Year 2',
+  either: 'Open to either arrangement',
+}

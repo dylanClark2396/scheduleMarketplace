@@ -334,27 +334,70 @@ Game {
 
 ### MarketplaceListing
 
+The marketplace uses a **discriminated union** on `dealType`. All three variants share a common base and add deal-specific fields.
+
+#### Common base fields (all listing types)
+
 ```typescript
-MarketplaceListing {
+{
   id: string
-  type: "request" | "offer"
-  // request = "I need an opponent on this date"
-  // offer   = "We are available to play on this date"
+  dealType: "buy-game" | "home-and-home" | "neutral-site"
+  status: "open" | "matched" | "closed"
   teamId / teamName / conference: string
   currentNetRanking: number | null
-  date: string
-  dateFlexibilityDays: number   // willing to shift ± N days
-  preferredLocation: "home" | "away" | "neutral" | "any"
-  targetNetMin / targetNetMax: number | null
-  targetConferences: string[]   // empty = any
-  compensationNotes: string     // game guarantee info
+  targetNetMin / targetNetMax: number | null   // opponent NET filter
+  targetConferences: string[]                  // empty = any
   notes: string
-  status: "open" | "matched" | "closed"
-  matchedListingId: string | null
   ownerId: string
+  matchedListingId: string | null
   createdAt / expiresAt: number
 }
 ```
+
+#### BuyGameListing (`dealType: "buy-game"`)
+
+A single game where the host pays the visitor a flat guarantee fee.
+
+```typescript
+{
+  role: "host" | "visitor"   // host pays; visitor receives
+  date: string               // "YYYY-MM-DD"
+  dateFlexibilityDays: number
+  season: string
+  guaranteeAmount: number | null   // USD
+}
+```
+
+#### HomeAndHomeListing (`dealType: "home-and-home"`)
+
+A two-game reciprocal series across two seasons (each team hosts once).
+
+```typescript
+{
+  hostYear: "year1" | "year2" | "either"   // which season the poster hosts
+  year1Season / year2Season: string
+  year1Date / year2Date: string | null     // optional — can negotiate later
+  dateFlexibilityDays: number
+}
+```
+
+#### NeutralSiteListing (`dealType: "neutral-site"`)
+
+A single game at a neutral venue (tournament, showcase, arena event).
+
+```typescript
+{
+  date: string
+  dateFlexibilityDays: number
+  season: string
+  venueName: string | null   // e.g. "Madison Square Garden"
+  venueCity: string | null   // e.g. "New York, NY"
+}
+```
+
+#### Legacy normalization
+
+Items written before `dealType` was introduced are normalized on read in `backend/types.ts` (`normalizeListing()`) — they are mapped to `BuyGameListing` with best-effort field mapping from old column names (`desiredDate` → `date`, `netRankingMin/Max` → `targetNetMin/Max`, etc.).
 
 ### ImportJob
 

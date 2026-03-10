@@ -3,8 +3,8 @@
     <template #header>
       <div class="listing-header">
         <Tag
-          :value="listing.type === 'request' ? 'REQUEST' : 'OFFER'"
-          :severity="listing.type === 'request' ? 'warn' : 'success'"
+          :value="DEAL_TYPE_LABELS[listing.dealType]?.toUpperCase()"
+          :severity="dealTypeSeverity"
         />
         <Tag
           :value="listing.status.toUpperCase()"
@@ -23,35 +23,76 @@
 
     <template #content>
       <div class="listing-details">
-        <div class="detail-row">
-          <i class="pi pi-calendar" />
-          <span>{{ listing.date }}</span>
-          <span v-if="listing.dateFlexibilityDays > 0" class="flexibility">
-            (±{{ listing.dateFlexibilityDays }}d flex)
-          </span>
-        </div>
 
-        <div class="detail-row">
-          <i class="pi pi-map-marker" />
-          <span>{{ LOCATION_LABELS[listing.preferredLocation] }}</span>
-        </div>
+        <!-- Buy Game -->
+        <template v-if="listing.dealType === 'buy-game'">
+          <div class="detail-row">
+            <i class="pi pi-calendar" />
+            <span>{{ listing.date }}</span>
+            <span v-if="listing.dateFlexibilityDays > 0" class="flexibility">
+              (±{{ listing.dateFlexibilityDays }}d flex)
+            </span>
+          </div>
+          <div class="detail-row">
+            <i class="pi pi-user" />
+            <span>{{ BUY_GAME_ROLE_LABELS[listing.role] }}</span>
+          </div>
+          <div v-if="listing.guaranteeAmount" class="detail-row">
+            <i class="pi pi-dollar" />
+            <span>Guarantee: ${{ listing.guaranteeAmount.toLocaleString() }}</span>
+          </div>
+        </template>
 
+        <!-- Home-and-Home -->
+        <template v-else-if="listing.dealType === 'home-and-home'">
+          <div class="detail-row">
+            <i class="pi pi-calendar" />
+            <span>
+              Year 1: {{ listing.year1Season }}
+              <span v-if="listing.year1Date"> — {{ listing.year1Date }}</span>
+            </span>
+          </div>
+          <div class="detail-row">
+            <i class="pi pi-calendar" />
+            <span>
+              Year 2: {{ listing.year2Season }}
+              <span v-if="listing.year2Date"> — {{ listing.year2Date }}</span>
+            </span>
+          </div>
+          <div class="detail-row">
+            <i class="pi pi-home" />
+            <span>{{ HOME_AND_HOME_HOST_YEAR_LABELS[listing.hostYear] }}</span>
+          </div>
+          <div v-if="listing.dateFlexibilityDays > 0" class="detail-row muted">
+            <i class="pi pi-clock" />
+            <span>±{{ listing.dateFlexibilityDays }}d flexibility</span>
+          </div>
+        </template>
+
+        <!-- Neutral Site -->
+        <template v-else-if="listing.dealType === 'neutral-site'">
+          <div class="detail-row">
+            <i class="pi pi-calendar" />
+            <span>{{ listing.date }}</span>
+            <span v-if="listing.dateFlexibilityDays > 0" class="flexibility">
+              (±{{ listing.dateFlexibilityDays }}d flex)
+            </span>
+          </div>
+          <div v-if="listing.venueName || listing.venueCity" class="detail-row">
+            <i class="pi pi-map-marker" />
+            <span>{{ [listing.venueName, listing.venueCity].filter(Boolean).join(' — ') }}</span>
+          </div>
+        </template>
+
+        <!-- Shared target fields -->
         <div v-if="listing.targetNetMin || listing.targetNetMax" class="detail-row">
           <i class="pi pi-filter" />
-          <span>
-            Target NET:
-            {{ listing.targetNetMin ?? '1' }} – {{ listing.targetNetMax ?? '363' }}
-          </span>
+          <span>Target NET: {{ listing.targetNetMin ?? '1' }} – {{ listing.targetNetMax ?? '363' }}</span>
         </div>
 
         <div v-if="listing.targetConferences.length > 0" class="detail-row">
           <i class="pi pi-tag" />
           <span>{{ listing.targetConferences.join(', ') }}</span>
-        </div>
-
-        <div v-if="listing.compensationNotes" class="detail-row">
-          <i class="pi pi-dollar" />
-          <span>{{ listing.compensationNotes }}</span>
         </div>
 
         <p v-if="listing.notes" class="listing-notes">{{ listing.notes }}</p>
@@ -62,7 +103,7 @@
       <div class="listing-actions">
         <Button
           v-if="listing.status === 'open' && canRespond"
-          :label="listing.type === 'request' ? 'Make Offer' : 'Accept'"
+          :label="respondLabel"
           icon="pi pi-handshake"
           size="small"
           @click="emit('respond', listing)"
@@ -85,7 +126,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { MarketplaceListing } from '@/models'
-import { LOCATION_LABELS } from '@/constants'
+import { DEAL_TYPE_LABELS, BUY_GAME_ROLE_LABELS, HOME_AND_HOME_HOST_YEAR_LABELS } from '@/constants'
 
 const props = defineProps<{
   listing: MarketplaceListing
@@ -98,10 +139,24 @@ const emit = defineEmits<{
   close: [listing: MarketplaceListing]
 }>()
 
+const dealTypeSeverity = computed(() => {
+  if (props.listing.dealType === 'buy-game') return 'warn'
+  if (props.listing.dealType === 'home-and-home') return 'info'
+  return 'success'
+})
+
 const statusSeverity = computed(() => {
   if (props.listing.status === 'open') return 'success'
   if (props.listing.status === 'matched') return 'info'
   return 'secondary'
+})
+
+const respondLabel = computed(() => {
+  if (props.listing.dealType === 'buy-game') {
+    return props.listing.role === 'host' ? 'Apply as Visitor' : 'Offer as Host'
+  }
+  if (props.listing.dealType === 'home-and-home') return 'Propose Series'
+  return 'Claim Spot'
 })
 
 function formatDate(ts: number) {
@@ -151,9 +206,14 @@ function formatDate(ts: number) {
   font-size: 0.9rem;
 }
 
+.detail-row.muted {
+  color: var(--p-text-muted-color);
+}
+
 .detail-row i {
   color: var(--p-primary-color);
   width: 16px;
+  flex-shrink: 0;
 }
 
 .flexibility {

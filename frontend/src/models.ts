@@ -108,30 +108,58 @@ export interface SosTargetSuggestion {
 // Marketplace
 // ========================
 
-export type ListingType = 'request' | 'offer'
+export type DealType = 'buy-game' | 'home-and-home' | 'neutral-site'
+export type BuyGameRole = 'host' | 'visitor'
+export type HomeAndHomeHostYear = 'year1' | 'year2' | 'either'
 export type ListingStatus = 'open' | 'matched' | 'closed'
 
-export interface MarketplaceListing {
+interface ListingBase {
   id: string
-  type: ListingType
+  dealType: DealType
+  status: ListingStatus
   teamId: string
   teamName: string
   conference: string
   currentNetRanking: number | null
-  date: string
-  dateFlexibilityDays: number
-  preferredLocation: GameLocation | 'any'
   targetNetMin: number | null
   targetNetMax: number | null
   targetConferences: string[]
-  compensationNotes: string
   notes: string
-  status: ListingStatus
-  matchedListingId: string | null
   ownerId: string
+  matchedListingId: string | null
   createdAt: number
   expiresAt: number
 }
+
+export interface BuyGameListing extends ListingBase {
+  dealType: 'buy-game'
+  role: BuyGameRole
+  date: string
+  dateFlexibilityDays: number
+  season: string
+  guaranteeAmount: number | null
+}
+
+export interface HomeAndHomeListing extends ListingBase {
+  dealType: 'home-and-home'
+  hostYear: HomeAndHomeHostYear
+  year1Season: string
+  year2Season: string
+  year1Date: string | null
+  year2Date: string | null
+  dateFlexibilityDays: number
+}
+
+export interface NeutralSiteListing extends ListingBase {
+  dealType: 'neutral-site'
+  date: string
+  dateFlexibilityDays: number
+  season: string
+  venueName: string | null
+  venueCity: string | null
+}
+
+export type MarketplaceListing = BuyGameListing | HomeAndHomeListing | NeutralSiteListing
 
 // ========================
 // Import

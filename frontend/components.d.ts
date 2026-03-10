@@ -11,11 +11,36 @@ export {}
 /* prettier-ignore */
 declare module 'vue' {
   export interface GlobalComponents {
+    AutoComplete: typeof import('primevue/autocomplete')['default']
+    Button: typeof import('primevue/button')['default']
+    Card: typeof import('primevue/card')['default']
+    Column: typeof import('primevue/column')['default']
+    ConfirmDialog: typeof import('primevue/confirmdialog')['default']
+    DataTable: typeof import('primevue/datatable')['default']
+    DatePicker: typeof import('primevue/datepicker')['default']
+    Dialog: typeof import('primevue/dialog')['default']
+    Divider: typeof import('primevue/divider')['default']
+    FileUpload: typeof import('primevue/fileupload')['default']
+    InputNumber: typeof import('primevue/inputnumber')['default']
+    InputText: typeof import('primevue/inputtext')['default']
     MarketplacePost: typeof import('./src/components/MarketplacePost.vue')['default']
+    Message: typeof import('primevue/message')['default']
+    MultiSelect: typeof import('primevue/multiselect')['default']
     NavBar: typeof import('./src/components/NavBar.vue')['default']
+    ProgressSpinner: typeof import('primevue/progressspinner')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
+    Select: typeof import('primevue/select')['default']
+    SelectButton: typeof import('primevue/selectbutton')['default']
+    Slider: typeof import('primevue/slider')['default']
     StrengthGauge: typeof import('./src/components/StrengthGauge.vue')['default']
+    Tag: typeof import('primevue/tag')['default']
     TeamSearch: typeof import('./src/components/TeamSearch.vue')['default']
+    Textarea: typeof import('primevue/textarea')['default']
+    Toast: typeof import('primevue/toast')['default']
+    ToggleSwitch: typeof import('primevue/toggleswitch')['default']
+  }
+  export interface GlobalDirectives {
+    Tooltip: typeof import('primevue/tooltip')['default']
   }
 }

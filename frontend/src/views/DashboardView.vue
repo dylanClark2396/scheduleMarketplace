@@ -101,9 +101,9 @@
             </div>
             <div v-else class="recent-listings">
               <div v-for="l in recentListings" :key="l.id" class="recent-listing-row">
-                <Tag :value="l.type.toUpperCase()" :severity="l.type === 'request' ? 'warn' : 'success'" />
+                <Tag :value="DEAL_TYPE_LABELS[l.dealType]?.toUpperCase()" severity="warn" />
                 <span class="listing-team">{{ l.teamName }}</span>
-                <span class="listing-date">{{ l.date }}</span>
+                <span class="listing-date">{{ l.dealType === 'home-and-home' ? l.year1Season : l.date }}</span>
               </div>
             </div>
           </template>
@@ -117,7 +117,7 @@
 import { ref, computed, onMounted } from 'vue'
 import NavBar from '@/components/NavBar.vue'
 import { useApi } from '@/composables/useApi'
-import { CURRENT_SEASON } from '@/constants'
+import { CURRENT_SEASON, DEAL_TYPE_LABELS } from '@/constants'
 import type { TeamSchedule, MarketplaceListing } from '@/models'
 
 const api = useApi()

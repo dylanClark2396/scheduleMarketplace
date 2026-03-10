@@ -14,6 +14,7 @@ import {
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { LambdaClient, InvokeCommand } from '@aws-sdk/client-lambda'
+import { normalizeListing } from './types.js'
 import type {
   Game,
   TeamSchedule,
@@ -266,7 +267,7 @@ app.get('/schedules/public', requireAuth, async (req: Request, res: Response) =>
     const summaries = items.map(({ games, ...rest }) => {
       const completed = (games ?? []).filter(g => g.status === 'completed')
       const wins = completed.filter(g => g.result === 'W').length
-      return { ...rest, games: [], wins, losses: completed.length - wins, gameCount: (games ?? []).length }
+      return { ...rest, scheduleType: 'reference' as const, games: [], wins, losses: completed.length - wins, gameCount: (games ?? []).length }
     })
     res.json(summaries)
   } catch (err) {
@@ -280,7 +281,7 @@ app.get('/schedules/public/:id', requireAuth, async (req: Request, res: Response
     const schedule = await getItem<TeamSchedule>(TABLES.schedules, { id: req.params['id'] as string })
     if (!schedule) return res.status(404).json({ error: 'Schedule not found' })
     if (schedule.scheduleType !== 'reference' && String(schedule.isPublic) !== 'true') return res.status(403).json({ error: 'Forbidden' })
-    res.json(schedule)
+    res.json({ ...schedule, scheduleType: 'reference' as const })
   } catch (err) {
     console.error(err)
     res.status(500).json({ error: 'Failed to fetch schedule' })
@@ -432,12 +433,13 @@ app.delete('/schedules/:scheduleId/games/:gameId', requireAuth, async (req: Requ
 
 app.get('/marketplace', async (req: Request, res: Response) => {
   try {
-    const { status, type, conference } = req.query as Record<string, string>
+    const { status, dealType, conference } = req.query as Record<string, string>
     const filters: Record<string, string> = {}
     if (status) filters.status = status
-    if (type) filters.type = type
+    if (dealType) filters.dealType = dealType
     if (conference) filters.conference = conference
-    const items = await scanTable<MarketplaceListing>(TABLES.marketplace, filters)
+    const rawItems = await scanTable<Record<string, unknown>>(TABLES.marketplace, filters)
+    const items = rawItems.map(normalizeListing)
     res.json(items)
   } catch (err) {
     console.error(err)
@@ -448,8 +450,8 @@ app.get('/marketplace', async (req: Request, res: Response) => {
 app.post('/marketplace', requireAuth, async (req: Request, res: Response) => {
   try {
     const listing: MarketplaceListing = {
+      ...(req.body as Omit<MarketplaceListing, 'id' | 'matchedListingId' | 'ownerId' | 'createdAt'>),
       id: generateId(),
-      ...req.body as Omit<MarketplaceListing, 'id' | 'matchedListingId' | 'ownerId' | 'createdAt'>,
       matchedListingId: null,
       ownerId: req.user!.sub,
       createdAt: Date.now(),
@@ -464,15 +466,17 @@ app.post('/marketplace', requireAuth, async (req: Request, res: Response) => {
 
 app.patch('/marketplace/:id', requireAuth, async (req: Request, res: Response) => {
   try {
-    const listing = await getItem<MarketplaceListing>(TABLES.marketplace, { id: req.params['id'] as string })
-    if (!listing) return res.status(404).json({ error: 'Listing not found' })
+    const raw = await getItem<Record<string, unknown>>(TABLES.marketplace, { id: req.params['id'] as string })
+    if (!raw) return res.status(404).json({ error: 'Listing not found' })
+    const listing = normalizeListing(raw)
     if (listing.ownerId !== req.user!.sub) return res.status(403).json({ error: 'Forbidden' })
-    const { date, preferredLocation, targetNetRange, status, notes } = req.body as Partial<MarketplaceListing>
-    if (date !== undefined) listing.date = date
-    if (preferredLocation !== undefined) listing.preferredLocation = preferredLocation
-    if (targetNetRange !== undefined) listing.targetNetRange = targetNetRange
-    if (status !== undefined) listing.status = status
-    if (notes !== undefined) listing.notes = notes
+    const allowed = ['status', 'notes', 'targetNetMin', 'targetNetMax', 'targetConferences',
+      'dateFlexibilityDays', 'date', 'guaranteeAmount', 'venueName', 'venueCity',
+      'year1Date', 'year2Date', 'hostYear', 'role']
+    const body = req.body as Record<string, unknown>
+    for (const key of allowed) {
+      if (body[key] !== undefined) (listing as unknown as Record<string, unknown>)[key] = body[key]
+    }
     await putItem(TABLES.marketplace, listing as unknown as Record<string, unknown>)
     res.json({ status: 'ok', listing })
   } catch (err) {
@@ -483,16 +487,18 @@ app.patch('/marketplace/:id', requireAuth, async (req: Request, res: Response) =
 
 app.delete('/marketplace/:id', requireAuth, async (req: Request, res: Response) => {
   try {
-    const listing = await getItem<MarketplaceListing>(TABLES.marketplace, { id: req.params['id'] as string })
-    if (!listing) return res.status(404).json({ error: 'Listing not found' })
+    const raw = await getItem<Record<string, unknown>>(TABLES.marketplace, { id: req.params['id'] as string })
+    if (!raw) return res.status(404).json({ error: 'Listing not found' })
+    const listing = normalizeListing(raw)
     if (listing.ownerId !== req.user!.sub) return res.status(403).json({ error: 'Forbidden' })
     // Clean up paired listing's matchedListingId if this was matched
     if (listing.matchedListingId) {
-      const paired = await getItem<MarketplaceListing>(TABLES.marketplace, { id: listing.matchedListingId })
+      const paired = await getItem<Record<string, unknown>>(TABLES.marketplace, { id: listing.matchedListingId })
       if (paired) {
-        paired.status = 'open'
-        paired.matchedListingId = null
-        await putItem(TABLES.marketplace, paired as unknown as Record<string, unknown>)
+        const pairedListing = normalizeListing(paired)
+        pairedListing.status = 'open'
+        pairedListing.matchedListingId = null
+        await putItem(TABLES.marketplace, pairedListing as unknown as Record<string, unknown>)
       }
     }
     await dynamo.send(new DeleteCommand({ TableName: TABLES.marketplace, Key: { id: req.params['id'] as string } }))
@@ -506,14 +512,16 @@ app.delete('/marketplace/:id', requireAuth, async (req: Request, res: Response) 
 app.post('/marketplace/:id/match', requireAuth, async (req: Request, res: Response) => {
   try {
     const { matchedListingId } = req.body as { matchedListingId: string }
-    const listing = await getItem<MarketplaceListing>(TABLES.marketplace, { id: req.params['id'] as string })
-    if (!listing) return res.status(404).json({ error: 'Listing not found' })
+    const raw = await getItem<Record<string, unknown>>(TABLES.marketplace, { id: req.params['id'] as string })
+    if (!raw) return res.status(404).json({ error: 'Listing not found' })
+    const listing = normalizeListing(raw)
     listing.status = 'matched'
     listing.matchedListingId = matchedListingId
     await putItem(TABLES.marketplace, listing as unknown as Record<string, unknown>)
-    if (matchedListingId && matchedListingId !== req.params['id'] as string) {
-      const other = await getItem<MarketplaceListing>(TABLES.marketplace, { id: matchedListingId })
-      if (other) {
+    if (matchedListingId && matchedListingId !== (req.params['id'] as string)) {
+      const otherRaw = await getItem<Record<string, unknown>>(TABLES.marketplace, { id: matchedListingId })
+      if (otherRaw) {
+        const other = normalizeListing(otherRaw)
         other.status = 'matched'
         other.matchedListingId = req.params['id'] as string
         await putItem(TABLES.marketplace, other as unknown as Record<string, unknown>)

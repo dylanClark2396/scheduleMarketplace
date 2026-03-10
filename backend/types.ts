@@ -53,25 +53,97 @@ export interface Team {
   updatedAt: number
 }
 
-export type ListingType = 'request' | 'offer'
+export type DealType = 'buy-game' | 'home-and-home' | 'neutral-site'
+export type BuyGameRole = 'host' | 'visitor'
+export type HomeAndHomeHostYear = 'year1' | 'year2' | 'either'
 export type ListingStatus = 'open' | 'matched' | 'closed'
 
-export interface MarketplaceListing {
+interface ListingBase {
   id: string
-  type: ListingType
+  dealType: DealType
   status: ListingStatus
   teamId: string
   teamName: string
   conference: string
-  season: string
-  desiredDate: string
-  location: GameLocation
-  netRankingMin: number | null
-  netRankingMax: number | null
+  currentNetRanking: number | null
+  targetNetMin: number | null
+  targetNetMax: number | null
+  targetConferences: string[]
   notes: string
   ownerId: string
   matchedListingId: string | null
   createdAt: number
+  expiresAt: number
+}
+
+export interface BuyGameListing extends ListingBase {
+  dealType: 'buy-game'
+  role: BuyGameRole
+  date: string
+  dateFlexibilityDays: number
+  season: string
+  guaranteeAmount: number | null
+}
+
+export interface HomeAndHomeListing extends ListingBase {
+  dealType: 'home-and-home'
+  hostYear: HomeAndHomeHostYear
+  year1Season: string
+  year2Season: string
+  year1Date: string | null
+  year2Date: string | null
+  dateFlexibilityDays: number
+}
+
+export interface NeutralSiteListing extends ListingBase {
+  dealType: 'neutral-site'
+  date: string
+  dateFlexibilityDays: number
+  season: string
+  venueName: string | null
+  venueCity: string | null
+}
+
+export type MarketplaceListing = BuyGameListing | HomeAndHomeListing | NeutralSiteListing
+
+export function isBuyGame(l: MarketplaceListing): l is BuyGameListing {
+  return l.dealType === 'buy-game'
+}
+
+export function isHomeAndHome(l: MarketplaceListing): l is HomeAndHomeListing {
+  return l.dealType === 'home-and-home'
+}
+
+export function isNeutralSite(l: MarketplaceListing): l is NeutralSiteListing {
+  return l.dealType === 'neutral-site'
+}
+
+/** Normalize a raw DynamoDB item that might predate the dealType field */
+export function normalizeListing(raw: Record<string, unknown>): MarketplaceListing {
+  if (raw['dealType']) return raw as unknown as MarketplaceListing
+  // Legacy row: map old fields to BuyGameListing
+  return {
+    id: raw['id'] as string,
+    dealType: 'buy-game',
+    status: (raw['status'] as ListingStatus) ?? 'open',
+    teamId: (raw['teamId'] as string) ?? '',
+    teamName: (raw['teamName'] as string) ?? '',
+    conference: (raw['conference'] as string) ?? '',
+    currentNetRanking: (raw['currentNetRanking'] as number | null) ?? null,
+    targetNetMin: (raw['netRankingMin'] as number | null) ?? null,
+    targetNetMax: (raw['netRankingMax'] as number | null) ?? null,
+    targetConferences: (raw['targetConferences'] as string[]) ?? [],
+    notes: (raw['notes'] as string) ?? '',
+    ownerId: (raw['ownerId'] as string) ?? '',
+    matchedListingId: (raw['matchedListingId'] as string | null) ?? null,
+    createdAt: (raw['createdAt'] as number) ?? 0,
+    expiresAt: (raw['expiresAt'] as number) ?? 0,
+    role: 'host',
+    date: (raw['desiredDate'] as string) ?? (raw['date'] as string) ?? '',
+    dateFlexibilityDays: (raw['dateFlexibilityDays'] as number) ?? 0,
+    season: (raw['season'] as string) ?? '',
+    guaranteeAmount: null,
+  }
 }
 
 export type ImportSource = 'photo' | 'pdf' | 'csv' | 'manual'
